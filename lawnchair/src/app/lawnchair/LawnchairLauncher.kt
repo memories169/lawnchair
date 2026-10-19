@@ -251,6 +251,9 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         reloadIconsIfNeeded()
 
+        // [xperia-port] Enable long-press drag-to-reorder in the app drawer (OWN_ORDER mode).
+        app.lawnchair.allapps.attachDrawerDragReorder(this)
+
         AppDatabase.INSTANCE.get(this).checkpointSync()
     }
 

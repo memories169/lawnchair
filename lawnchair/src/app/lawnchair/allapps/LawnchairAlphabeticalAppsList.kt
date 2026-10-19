@@ -15,6 +15,7 @@ import app.lawnchair.util.categorizeAppsWithSystemAndGoogle
 import com.android.launcher3.InvariantDeviceProfile.OnIDPChangeListener
 import com.android.launcher3.allapps.AllAppsStore
 import com.android.launcher3.allapps.AlphabeticalAppsList
+import com.android.launcher3.allapps.BaseAllAppsAdapter
 import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem
 import com.android.launcher3.allapps.PrivateProfileManager
 import com.android.launcher3.allapps.WorkProfileManager
@@ -149,6 +150,33 @@ class LawnchairAlphabeticalAppsList<T>(
             position++
         }
         return position
+    }
+
+    // [xperia-port] Drag-reorder support (OWN_ORDER mode only).
+    fun isOwnOrderDragEnabled(): Boolean = prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER
+
+    fun isAppAtPosition(position: Int): Boolean =
+        mAdapterItems.getOrNull(position)?.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON
+
+    // Reorders the live adapter list in memory during a drag; returns false for non-app slots.
+    fun onDragMove(from: Int, to: Int): Boolean {
+        if (!isOwnOrderDragEnabled()) return false
+        if (from !in mAdapterItems.indices || to !in mAdapterItems.indices) return false
+        if (mAdapterItems[from].viewType != BaseAllAppsAdapter.VIEW_TYPE_ICON) return false
+        if (mAdapterItems[to].viewType != BaseAllAppsAdapter.VIEW_TYPE_ICON) return false
+        val item = mAdapterItems.removeAt(from)
+        mAdapterItems.add(to, item)
+        return true
+    }
+
+    // Persists the current app sequence into drawerAppOrder after a drag completes.
+    fun onDragEnd() {
+        if (!isOwnOrderDragEnabled()) return
+        val newOrder = mAdapterItems
+            .filter { it.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON }
+            .mapNotNull { it.itemInfo?.toComponentKey()?.toString() }
+            .filter { it.isNotEmpty() }
+        prefs.drawerAppOrder.set(newOrder.joinToString(","))
     }
 
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {

@@ -40,12 +40,15 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
+import app.lawnchair.allapps.LawnchairAlphabeticalAppsList
 import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
 import app.lawnchair.ui.preferences.components.SuggestionsPreference
 import app.lawnchair.ui.preferences.components.colorpreference.ColorPreference
 import app.lawnchair.ui.preferences.components.controls.SliderPreference
+import app.lawnchair.ui.preferences.components.controls.ListPreference
+import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreferenceWithPreview
 import app.lawnchair.ui.preferences.components.layout.DividerColumn
@@ -87,6 +90,20 @@ fun AppDrawerPreferences(
             )
             SearchBarPreference(SearchRoute.DRAWER_SEARCH, showLabel = false)
             SuggestionsPreference()
+            // [xperia-port] Drawer sort mode: alphabetical (default) or manual drag-to-reorder.
+            ListPreference(
+                adapter = prefs.drawerSortMode.getAdapter(),
+                entries = listOf(
+                    ListPreferenceEntry(LawnchairAlphabeticalAppsList.SORT_MODE_ALPHABETICAL) {
+                        "Alphabetical"
+                    },
+                    ListPreferenceEntry(LawnchairAlphabeticalAppsList.SORT_MODE_OWN_ORDER) {
+                        "Manual (drag to reorder)"
+                    },
+                ),
+                label = "Sort apps",
+                description = "Manual lets you long-press and drag icons in the app drawer",
+            )
         }
         PreferenceGroup(heading = stringResource(R.string.style)) {
             ColorPreference(preference = prefs2.appDrawerBackgroundColor)
