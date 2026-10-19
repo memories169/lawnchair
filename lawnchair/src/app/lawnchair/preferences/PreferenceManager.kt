@@ -126,6 +126,7 @@ class PreferenceManager private constructor(private val context: Context) :
 
     // [xperia-port] App drawer sort mode: "alphabetical" (default) or "ownOrder" (manual drag reorder).
     val drawerSortMode = StringPref("pref_drawerSortMode", "alphabetical", recreate)
+
     // [xperia-port] Persisted manual order of standalone drawer apps (comma-separated component keys).
     val drawerAppOrder = StringPref("pref_drawerAppOrder", "", reloadGrid)
 

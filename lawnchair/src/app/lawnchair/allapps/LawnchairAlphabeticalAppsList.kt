@@ -155,8 +155,7 @@ class LawnchairAlphabeticalAppsList<T>(
     // [xperia-port] Drag-reorder support (OWN_ORDER mode only).
     fun isOwnOrderDragEnabled(): Boolean = prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER
 
-    fun isAppAtPosition(position: Int): Boolean =
-        mAdapterItems.getOrNull(position)?.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON
+    fun isAppAtPosition(position: Int): Boolean = mAdapterItems.getOrNull(position)?.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON
 
     // Reorders the live adapter list in memory during a drag; returns false for non-app slots.
     fun onDragMove(from: Int, to: Int): Boolean {
