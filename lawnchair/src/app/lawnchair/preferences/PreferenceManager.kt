@@ -124,6 +124,11 @@ class PreferenceManager private constructor(private val context: Context) :
     val drawerList = BoolPref("pref_drawerList", true, recreate)
     val folderApps = BoolPref("pref_hideFolderApps", true, reloadGrid)
 
+    // [xperia-port] App drawer sort mode: "alphabetical" (default) or "ownOrder" (manual drag reorder).
+    val drawerSortMode = StringPref("pref_drawerSortMode", "alphabetical", recreate)
+    // [xperia-port] Persisted manual order of standalone drawer apps (comma-separated component keys).
+    val drawerAppOrder = StringPref("pref_drawerAppOrder", "", reloadGrid)
+
     val recentsActionScreenshot = BoolPref("pref_recentsActionScreenshot", !isOnePlusStock)
     val recentsActionShare = BoolPref("pref_recentsActionShare", isOnePlusStock)
     val recentsActionLens = BoolPref("pref_recentsActionLens", true)

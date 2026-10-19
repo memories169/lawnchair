@@ -117,13 +117,46 @@ class LawnchairAlphabeticalAppsList<T>(
                 position++
             }
             val remainingApps = appList.filterNot { app -> filteredList.contains(app) && prefs.folderApps.get() }
-            position = super.addAppsWithSections(remainingApps, position)
+            // [xperia-port] OWN_ORDER: lay out standalone apps by the user's manual order instead of A-Z.
+            position = if (prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER) {
+                addAppsInOwnOrder(remainingApps, position)
+            } else {
+                super.addAppsWithSections(remainingApps, position)
+            }
         }
 
         return position
     }
 
+    // [xperia-port] Adds standalone apps following the persisted manual order (drawerAppOrder),
+    // with any not-yet-ordered apps appended alphabetically. No A-Z section headers are created.
+    private fun addAppsInOwnOrder(appList: List<AppInfo?>, startPosition: Int): Int {
+        val order = prefs.drawerAppOrder.get()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val orderIndex = HashMap<String, Int>(order.size)
+        order.forEachIndexed { index, key -> if (!orderIndex.containsKey(key)) orderIndex[key] = index }
+        val sorted = appList.mapNotNull { it }.sortedWith(
+            compareBy(
+                { orderIndex[it.toComponentKey().toString()] ?: Int.MAX_VALUE },
+                { it.title?.toString().orEmpty() },
+            ),
+        )
+        var position = startPosition
+        for (app in sorted) {
+            mAdapterItems.add(AdapterItem.asApp(app))
+            position++
+        }
+        return position
+    }
+
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {
         onAppsUpdated()
+    }
+
+    companion object {
+        const val SORT_MODE_ALPHABETICAL = "alphabetical"
+        const val SORT_MODE_OWN_ORDER = "ownOrder"
     }
 }
