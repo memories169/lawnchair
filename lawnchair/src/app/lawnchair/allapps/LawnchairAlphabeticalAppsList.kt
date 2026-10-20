@@ -44,6 +44,10 @@ class LawnchairAlphabeticalAppsList<T>(
     private var folderList = mutableListOf<FolderInfo>()
     private val filteredList = mutableListOf<AppInfo>()
 
+    // [xperia-port] Guards against duplicate folders: signatures of app-sets whose folder creation is
+    // still in flight (the Room flow hasn't re-emitted yet). Cleared once the DB list refreshes.
+    private val pendingFolderMerges = mutableSetOf<String>()
+
     // [xperia-port] Read live so a persisted folder reorder takes effect without recreating the list.
     private val folderOrder: List<Int> get() = FolderOrderUtils.stringToIntList(prefs.drawerListOrder.get())
 
@@ -66,6 +70,8 @@ class LawnchairAlphabeticalAppsList<T>(
             folderList = folders
                 .sortedBy { order.indexOf(it.id) }
                 .toMutableList()
+            // The DB now reflects committed folders, so the in-flight guard is no longer needed.
+            pendingFolderMerges.clear()
             updateAdapterItems()
         }
     }
@@ -199,10 +205,22 @@ class LawnchairAlphabeticalAppsList<T>(
         if (!canMergeAt(from, to)) return
         val source = mAdapterItems[from].itemInfo ?: return
         val target = mAdapterItems[to].itemInfo ?: return
+        val signature = mergeSignature(source, target)
+        // Ignore repeated gestures for the same pair (e.g. the user stacks again before the first
+        // folder has rendered) so we never end up with two folders holding the identical apps.
+        if (signature in pendingFolderMerges) return
+        if (folderList.any { folder -> mergeSignatureOfFolder(folder) == signature }) return
+        pendingFolderMerges.add(signature)
         // Ensure folder contents are hidden from the loose app list so the pair doesn't appear twice.
         if (!prefs.folderApps.get()) prefs.folderApps.set(true)
         viewModel.createFolderWithItems(target.title?.toString().orEmpty(), listOf(source, target))
     }
+
+    private fun mergeSignature(a: AppInfo, b: AppInfo): String =
+        listOf(a.toComponentKey().toString(), b.toComponentKey().toString()).sorted().joinToString("|")
+
+    private fun mergeSignatureOfFolder(folder: FolderInfo): String =
+        folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }.sorted().joinToString("|")
 
     // Persists the current app sequence into drawerAppOrder and the folder sequence into drawerListOrder.
     fun onDragEnd() {
