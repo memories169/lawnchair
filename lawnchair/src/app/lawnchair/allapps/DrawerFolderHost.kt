@@ -2,6 +2,7 @@ package app.lawnchair.allapps
 
 import android.content.Context
 import app.lawnchair.data.folder.service.FolderService
+import com.android.launcher3.views.ActivityContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,16 +26,25 @@ object DrawerFolderHost {
     }
 
     /**
-     * Ejects an app from a drawer folder (drag-out). Persists to Room: removes the app from the folder,
-     * or dissolves the folder entirely when only one app would remain. The app reappears as a standalone
-     * drawer icon via the Room flow re-emit.
+     * Ejects an app from a drawer folder (drag-out). Prefers the live apps list so the app is re-inserted
+     * into the manual order at the drawer slot under the drop point; falls back to a Room-only removal
+     * (folder dissolves at one app) when the list is unreachable. [activityContext] is the folder's host,
+     * which at runtime is the Launcher (a Context as well as an ActivityContext).
      */
     @JvmStatic
-    fun eject(context: Context, folderId: Int, componentKey: String?) {
+    fun eject(activityContext: ActivityContext, folderId: Int, componentKey: String?, winX: Int, winY: Int) {
         if (folderId <= 0 || componentKey.isNullOrEmpty()) return
-        val service = FolderService.INSTANCE.get(context.applicationContext)
-        scope.launch {
-            runCatching { service.ejectAppFromFolder(folderId, componentKey) }
+        val list = activityContext.appsView
+            ?.activeRecyclerView
+            ?.apps as? LawnchairAlphabeticalAppsList<*>
+        if (list != null) {
+            list.ejectAtWindowPoint(folderId, componentKey, winX, winY)
+        } else {
+            val app = activityContext as? Context ?: return
+            val service = FolderService.INSTANCE.get(app.applicationContext)
+            scope.launch {
+                runCatching { service.ejectAppFromFolder(folderId, componentKey) }
+            }
         }
     }
 }

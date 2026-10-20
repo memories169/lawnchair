@@ -1543,7 +1543,12 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
             String key = si instanceof com.android.launcher3.model.data.AppInfo
                     ? ((com.android.launcher3.model.data.AppInfo) si).toComponentKey().toString()
                     : null;
-            app.lawnchair.allapps.DrawerFolderHost.eject(getContext(), mInfo.id, key);
+            // Pass the released icon's window position so the app re-enters the drawer at that slot.
+            int[] loc = new int[2];
+            d.dragView.getLocationInWindow(loc);
+            int cx = loc[0] + d.dragView.getWidth() / 2;
+            int cy = loc[1] + d.dragView.getHeight() / 2;
+            app.lawnchair.allapps.DrawerFolderHost.eject(mActivityContext, mInfo.id, key, cx, cy);
             mCurrentDragView = null;
             d.deferDragViewCleanupPostAnimation = false;
             close(true);

@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.viewModels
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.data.folder.model.FolderOrderUtils
 import app.lawnchair.data.folder.model.FolderViewModel
 import app.lawnchair.launcher
@@ -357,6 +358,99 @@ class LawnchairAlphabeticalAppsList<T>(
     fun onDragEnd() {
         if (!isOwnOrderDragEnabled()) return
         prefs.drawerGridOrder.set(currentGridTokens().joinToString(","))
+    }
+
+    // [xperia-port] Drag-out eject: removes an app from a drawer folder and re-inserts it into the manual
+    // grid at the slot nearest the release point, so the icon lands where the finger dropped it (not at
+    // the end of the drawer). Dissolves the folder when one or zero apps remain. Runs on the UI thread
+    // (invoked from Folder.onDrop via DrawerFolderHost.eject).
+    fun ejectAtWindowPoint(folderId: Int, componentKey: String, winX: Int, winY: Int) {
+        val folder = folderList.find { it.id == folderId } ?: return
+        val contents = folder.getContents().mapNotNull { it as? AppInfo }
+        if (contents.none { it.toComponentKey().toString() == componentKey }) return
+        val remaining = contents.filterNot { it.toComponentKey().toString() == componentKey }
+
+        val order = currentGridTokens().toMutableList()
+        val folderTok = "f:$folderId"
+        val fIdx = order.indexOf(folderTok)
+        val ejectedTok = "a:$componentKey"
+        var tIdx = tokenIndexAtPoint(context.appsView?.activeRecyclerView, winX, winY)
+        // Drop any stale loose token for this app so we never end up with a duplicate, adjusting the
+        // insertion index if that removal shifted it left.
+        val dupIdx = order.indexOf(ejectedTok)
+        if (dupIdx >= 0) {
+            order.removeAt(dupIdx)
+            if (dupIdx < tIdx) tIdx--
+        }
+
+        if (remaining.size <= 1) {
+            // Dissolve: the folder disappears; its surviving member (if any) keeps the folder's old slot.
+            viewModel.deleteFolderWithoutReload(folderId)
+            folderList.removeAll { it.id == folderId }
+            if (fIdx >= 0) {
+                order.removeAt(fIdx)
+                val survivor = remaining.firstOrNull()
+                if (survivor != null) {
+                    order.add(fIdx, "a:${survivor.toComponentKey()}")
+                } else if (fIdx < tIdx) {
+                    tIdx--
+                }
+            }
+        } else {
+            // Folder stays: drop only the ejected app from it, optimistically so the rebuild is instant.
+            viewModel.setFolderItems(folderId, folder.title?.toString().orEmpty(), remaining)
+            val updated = FolderInfo().apply {
+                id = folderId
+                title = folder.title
+                remaining.forEach { add(it) }
+            }
+            val idx = folderList.indexOfFirst { it.id == folderId }
+            if (idx >= 0) folderList[idx] = updated
+        }
+
+        order.add(tIdx.coerceIn(0, order.size), ejectedTok)
+        prefs.drawerGridOrder.set(order.joinToString(","))
+        updateAdapterItems()
+    }
+
+    // [xperia-port] Maps a window coordinate (the released icon's centre) to an insertion index in the
+    // grid-token space. Prefers the icon directly under the point; otherwise the nearest icon, inserting
+    // after it when the point sits below/right of its centre. Section headers are skipped.
+    private fun tokenIndexAtPoint(rv: RecyclerView?, winX: Int, winY: Int): Int {
+        val tokenCount = currentGridTokens().size
+        if (rv == null) return tokenCount
+        val loc = IntArray(2)
+        rv.getLocationInWindow(loc)
+        val lx = (winX - loc[0]).toFloat()
+        val ly = (winY - loc[1]).toFloat()
+        var adapterPos: Int
+        val under = rv.findChildViewUnder(lx.toDouble(), ly.toDouble())
+        if (under != null) {
+            adapterPos = rv.getChildAdapterPosition(under)
+        } else {
+            var best = -1
+            var bestDist = Long.MAX_VALUE
+            var after = false
+            val cloc = IntArray(2)
+            for (i in 0 until rv.childCount) {
+                val c = rv.getChildAt(i) ?: continue
+                c.getLocationInWindow(cloc)
+                val cx = cloc[0] + c.width / 2
+                val cy = cloc[1] + c.height / 2
+                val dx = (cx - winX).toLong()
+                val dy = (cy - winY).toLong()
+                val d = dx * dx + dy * dy
+                if (d < bestDist) {
+                    bestDist = d
+                    best = rv.getChildAdapterPosition(c)
+                    after = cy < winY || (cy == winY && cx < winX)
+                }
+            }
+            if (best < 0) return tokenCount
+            adapterPos = if (after) best + 1 else best
+        }
+        if (adapterPos < 0) adapterPos = 0
+        return (0 until adapterPos.coerceAtMost(mAdapterItems.size)).count { kindAt(it) != Kind.OTHER }
     }
 
     // [xperia-port] Returns true (once) if the given folder was just created by a merge, so the adapter

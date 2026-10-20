@@ -522,6 +522,14 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             enforceDragParity("onDragStart", 0, 0);
         }
 
+        // [xperia-port] A drag started inside an app-drawer folder must stay in the drawer: the normal
+        // workspace handling here would spring-load the home screen (revealing it behind the drawer) and
+        // add an empty page. The Folder popup claims such drops itself, so skip all workspace setup.
+        if (dragObject.dragSource instanceof Folder
+                && ((Folder) dragObject.dragSource).isInAppDrawer()) {
+            return;
+        }
+
         if (mDragInfo != null && mDragInfo.cell != null) {
             CellLayout layout = (CellLayout) (mDragInfo.cell instanceof LauncherAppWidgetHostView
                     // https://github.com/LawnchairLauncher/lawnchair/issues/3143
