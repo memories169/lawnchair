@@ -216,11 +216,9 @@ class LawnchairAlphabeticalAppsList<T>(
         viewModel.createFolderWithItems(target.title?.toString().orEmpty(), listOf(source, target))
     }
 
-    private fun mergeSignature(a: AppInfo, b: AppInfo): String =
-        listOf(a.toComponentKey().toString(), b.toComponentKey().toString()).sorted().joinToString("|")
+    private fun mergeSignature(a: AppInfo, b: AppInfo): String = listOf(a.toComponentKey().toString(), b.toComponentKey().toString()).sorted().joinToString("|")
 
-    private fun mergeSignatureOfFolder(folder: FolderInfo): String =
-        folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }.sorted().joinToString("|")
+    private fun mergeSignatureOfFolder(folder: FolderInfo): String = folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }.sorted().joinToString("|")
 
     // Persists the current app sequence into drawerAppOrder and the folder sequence into drawerListOrder.
     fun onDragEnd() {
