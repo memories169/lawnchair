@@ -287,14 +287,15 @@ class LawnchairLauncher : QuickstepLauncher() {
         gestureController.onHomePressed()
     }
 
-    // [xperia-port] In Manual (own-order) drawer mode, a long-press starts an in-drawer reorder drag
-    // instead of Launcher's drag-to-workspace, so apps are never accidentally dragged to the home screen.
+    // [xperia-port] While the drawer edit toggle is armed (Manual mode), a long-press starts an in-drawer
+    // reorder drag for icons and folders. When disarmed, apps fall through to Launcher's normal
+    // drag-to-home; folders do nothing (so a tap still opens them instead of dragging them out).
     override fun getAllAppsItemLongClickListener(): android.view.View.OnLongClickListener {
         return android.view.View.OnLongClickListener { v ->
-            if (app.lawnchair.allapps.startDrawerReorderDrag(this, v)) {
-                true
-            } else {
-                com.android.launcher3.touch.ItemLongClickListener.INSTANCE_ALL_APPS.onLongClick(v)
+            when {
+                app.lawnchair.allapps.startDrawerReorderDrag(this, v) -> true
+                v is com.android.launcher3.folder.FolderIcon -> false
+                else -> com.android.launcher3.touch.ItemLongClickListener.INSTANCE_ALL_APPS.onLongClick(v)
             }
         }
     }

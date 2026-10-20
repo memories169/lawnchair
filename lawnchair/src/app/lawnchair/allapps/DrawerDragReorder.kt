@@ -74,7 +74,9 @@ fun startDrawerReorderDrag(launcher: Launcher, iconView: View): Boolean {
     val apps = (rv as? AllAppsRecyclerView)?.apps as? LawnchairAlphabeticalAppsList<*> ?: return false
     if (!apps.isOwnOrderDragEnabled()) return false
     val itemTouchHelper = dragHelpers[rv] ?: return false
-    val viewHolder = rv.getChildViewHolder(iconView) ?: return false
+    // The long-pressed view may be a descendant of the RecyclerView child (e.g. a folder's FolderIcon
+    // inside its container), so resolve the containing ViewHolder rather than requiring a direct child.
+    val viewHolder = rv.findContainingViewHolder(iconView) ?: return false
     if (!apps.isAppAtPosition(viewHolder.bindingAdapterPosition)) return false
     itemTouchHelper.startDrag(viewHolder)
     return true

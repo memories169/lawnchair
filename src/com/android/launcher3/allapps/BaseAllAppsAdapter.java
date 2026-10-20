@@ -356,8 +356,12 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                 FolderInfo folderInfo = mApps.getAdapterItems().get(position).folderInfo;
                 ViewGroup container = (ViewGroup) holder.itemView;
                 container.removeAllViews();
-                container.addView(FolderIcon.inflateFolderAndIcon(R.layout.all_apps_folder_icon, mActivityContext,
-                    container, folderInfo));
+                FolderIcon drawerFolderIcon = FolderIcon.inflateFolderAndIcon(R.layout.all_apps_folder_icon, mActivityContext,
+                    container, folderInfo);
+                container.addView(drawerFolderIcon);
+                // [xperia-port] Give drawer folders the same long-press handler as icons so an armed
+                // edit-mode long-press starts a reorder drag (see LawnchairLauncher override).
+                drawerFolderIcon.setOnLongClickListener(mOnIconLongClickListener);
                 break;
             default:
                 if (mAdapterProvider.isViewSupported(holder.getItemViewType())) {
