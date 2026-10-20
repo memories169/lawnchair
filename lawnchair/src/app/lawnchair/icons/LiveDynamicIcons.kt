@@ -190,7 +190,7 @@ class LiveCalendarIconDrawable(base: Drawable?) : CustomAdaptiveIconDrawable(liv
 private fun liveBackgroundOf(base: Drawable?, fallbackColor: String): Drawable {
     val bg = (base as? AdaptiveIconDrawable)?.let { adaptive ->
         try {
-            adaptive.getDrawable(0)?.mutate()
+            adaptive.getBackground()?.mutate()
         } catch (e: Exception) {
             null
         }
