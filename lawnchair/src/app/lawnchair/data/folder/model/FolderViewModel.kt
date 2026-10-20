@@ -75,10 +75,13 @@ class FolderViewModel(
     }
 
     // [xperia-port] Creates a folder from a set of apps (e.g. two apps stacked together in the drawer).
-    fun createFolderWithItems(title: String, appInfos: List<AppInfo>) {
+    // [onCreated] fires with the new folder's DB id once the insert commits, so the drawer can render
+    // the folder immediately instead of waiting for the Room flow to re-emit.
+    fun createFolderWithItems(title: String, appInfos: List<AppInfo>, onCreated: (Int) -> Unit = {}) {
         viewModelScope.launch {
-            repository.createFolderWithItems(title, appInfos)
+            val id = repository.createFolderWithItems(title, appInfos).toInt()
             reloadHelper.reloadGrid()
+            onCreated(id)
         }
     }
 

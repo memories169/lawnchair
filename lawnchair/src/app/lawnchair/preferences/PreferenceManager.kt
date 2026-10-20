@@ -130,6 +130,10 @@ class PreferenceManager private constructor(private val context: Context) :
     // [xperia-port] Persisted manual order of standalone drawer apps (comma-separated component keys).
     val drawerAppOrder = StringPref("pref_drawerAppOrder", "", reloadGrid)
 
+    // [xperia-port] Interleaved manual order of the whole drawer: comma-separated tokens, each either
+    // "f:<folderId>" or "a:<componentKey>". Used in ownOrder mode so folders and apps share one grid.
+    val drawerGridOrder = StringPref("pref_drawerGridOrder", "", reloadGrid)
+
     val recentsActionScreenshot = BoolPref("pref_recentsActionScreenshot", !isOnePlusStock)
     val recentsActionShare = BoolPref("pref_recentsActionShare", isOnePlusStock)
     val recentsActionLens = BoolPref("pref_recentsActionLens", true)

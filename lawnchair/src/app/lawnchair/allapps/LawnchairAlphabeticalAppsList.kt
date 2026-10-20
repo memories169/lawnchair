@@ -70,8 +70,10 @@ class LawnchairAlphabeticalAppsList<T>(
             folderList = folders
                 .sortedBy { order.indexOf(it.id) }
                 .toMutableList()
-            // The DB now reflects committed folders, so the in-flight guard is no longer needed.
-            pendingFolderMerges.clear()
+            // Release the in-flight guard only for folders that have actually rendered, so a repeated
+            // stack gesture can't slip through between the DB write and this emission and create a
+            // second identical folder. Any still-pending signature stays guarded until its folder shows.
+            pendingFolderMerges.removeAll { signature -> folderList.any { mergeSignatureOfFolder(it) == signature } }
             updateAdapterItems()
         }
     }
@@ -110,58 +112,103 @@ class LawnchairAlphabeticalAppsList<T>(
                 }
                 position++
             }
+        } else if (prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER) {
+            // [xperia-port] Interleaved manual grid: folders and apps share one order (drawerGridOrder),
+            // so a folder can be placed anywhere among the apps (Xperia Home behaviour).
+            position = addInterleavedOwnOrder(appList, position)
         } else {
-            // [xperia-port] Sort folders by the persisted order here (not just in observeFolders), so a
-            // drag-reorder persists immediately even when the folders LiveData does not re-emit.
+            // Alphabetical mode: folders first (by drawerListOrder), then A-Z apps.
             val order = folderOrder
             val orderedFolders = folderList.sortedBy { order.indexOf(it.id) }
             orderedFolders.forEach { folder ->
                 if (folder.getContents().size > 1) {
-                    val folderInfo = FolderInfo()
-                    folderInfo.id = folder.id // carry the DB id so onDragEnd can persist folder order
-                    folderInfo.title = folder.title
-                    mAdapterItems.add(AdapterItem.asFolder(folderInfo))
-                    folder.getContents().forEach { app ->
-                        (appsStore.getApp(app.componentKey) as? AppInfo)?.let {
-                            folderInfo.add(it)
-                            if (prefs.folderApps.get()) filteredList.add(it)
-                        }
-                    }
+                    addFolderItem(folder)
                 }
                 position++
             }
             val remainingApps = appList.filterNot { app -> filteredList.contains(app) && prefs.folderApps.get() }
-            // [xperia-port] OWN_ORDER: lay out standalone apps by the user's manual order instead of A-Z.
-            position = if (prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER) {
-                addAppsInOwnOrder(remainingApps, position)
-            } else {
-                super.addAppsWithSections(remainingApps, position)
-            }
+            position = super.addAppsWithSections(remainingApps, position)
         }
 
         return position
     }
 
-    // [xperia-port] Adds standalone apps following the persisted manual order (drawerAppOrder),
-    // with any not-yet-ordered apps appended alphabetically. No A-Z section headers are created.
-    private fun addAppsInOwnOrder(appList: List<AppInfo?>, startPosition: Int): Int {
-        val order = prefs.drawerAppOrder.get()
+    // [xperia-port] Adds a folder AdapterItem, carrying its DB id (so onDragEnd can persist order) and
+    // resolving its contents. Foldered apps are recorded in filteredList so they're hidden from the
+    // loose app list when "Apps in folder" is on.
+    private fun addFolderItem(folder: FolderInfo) {
+        val folderInfo = FolderInfo()
+        folderInfo.id = folder.id
+        folderInfo.title = folder.title
+        mAdapterItems.add(AdapterItem.asFolder(folderInfo))
+        folder.getContents().forEach { app ->
+            (appsStore.getApp(app.componentKey) as? AppInfo)?.let {
+                folderInfo.add(it)
+                if (prefs.folderApps.get()) filteredList.add(it)
+            }
+        }
+    }
+
+    // [xperia-port] Builds the drawer as one interleaved list following the persisted manual order
+    // (drawerGridOrder: "f:<id>"/"a:<key>" tokens). Anything not yet ordered is appended (folders, then
+    // remaining apps alphabetically), so newly installed apps and new folders still show up.
+    private fun addInterleavedOwnOrder(appList: List<AppInfo?>, startPosition: Int): Int {
+        val order = prefs.drawerGridOrder.get()
             .split(",")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-        val orderIndex = HashMap<String, Int>(order.size)
-        order.forEachIndexed { index, key -> if (!orderIndex.containsKey(key)) orderIndex[key] = index }
-        val sorted = appList.mapNotNull { it }.sortedWith(
-            compareBy(
-                { orderIndex[it.toComponentKey().toString()] ?: Int.MAX_VALUE },
-                { it.title?.toString().orEmpty() },
-            ),
-        )
-        var position = startPosition
-        for (app in sorted) {
-            mAdapterItems.add(AdapterItem.asApp(app))
-            position++
+
+        val looseApps = LinkedHashMap<String, AppInfo>()
+        appList.mapNotNull { it }.forEach { looseApps[it.toComponentKey().toString()] = it }
+
+        val folders = folderList.filter { it.getContents().size > 1 }.associateBy { it.id }
+        // Hide foldered apps from the loose list (mirrors the alphabetical path's filteredList behaviour).
+        if (prefs.folderApps.get()) {
+            folders.values.forEach { folder ->
+                folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }
+                    .forEach { looseApps.remove(it) }
+            }
         }
+
+        var position = startPosition
+        val placedFolders = mutableSetOf<Int>()
+        val placedApps = mutableSetOf<String>()
+        for (token in order) {
+            when {
+                token.startsWith("f:") -> {
+                    val id = token.substring(2).toIntOrNull() ?: continue
+                    val folder = folders[id] ?: continue
+                    if (placedFolders.add(id)) {
+                        addFolderItem(folder)
+                        position++
+                    }
+                }
+
+                token.startsWith("a:") -> {
+                    val key = token.substring(2)
+                    val app = looseApps[key] ?: continue
+                    if (placedApps.add(key)) {
+                        mAdapterItems.add(AdapterItem.asApp(app))
+                        position++
+                    }
+                }
+            }
+        }
+
+        // Append folders not present in the saved order (e.g. just created), then remaining apps.
+        folders.values.forEach { folder ->
+            if (placedFolders.add(folder.id)) {
+                addFolderItem(folder)
+                position++
+            }
+        }
+        looseApps.entries
+            .filter { it.key !in placedApps }
+            .sortedBy { it.value.title?.toString().orEmpty() }
+            .forEach {
+                mAdapterItems.add(AdapterItem.asApp(it.value))
+                position++
+            }
         return position
     }
 
@@ -176,15 +223,13 @@ class LawnchairAlphabeticalAppsList<T>(
         return type == BaseAllAppsAdapter.VIEW_TYPE_ICON || type == BaseAllAppsAdapter.VIEW_TYPE_FOLDER
     }
 
-    // Reorders the live adapter list in memory during a drag. Icons only swap with icons, folders only
-    // with folders (matches Xperia's same-viewType rule), so the folder block and app block stay intact.
+    // Reorders the live adapter list in memory during a drag. In the interleaved manual grid any app or
+    // folder may move to any other app/folder slot, so we only require both ends to be reorderable items
+    // (never section headers etc.).
     fun onDragMove(from: Int, to: Int): Boolean {
         if (!isOwnOrderDragEnabled()) return false
         if (from !in mAdapterItems.indices || to !in mAdapterItems.indices) return false
-        val fromType = mAdapterItems[from].viewType
-        val toType = mAdapterItems[to].viewType
-        if (fromType != toType) return false
-        if (fromType != BaseAllAppsAdapter.VIEW_TYPE_ICON && fromType != BaseAllAppsAdapter.VIEW_TYPE_FOLDER) return false
+        if (!isAppAtPosition(from) || !isAppAtPosition(to)) return false
         val item = mAdapterItems.removeAt(from)
         mAdapterItems.add(to, item)
         return true
@@ -213,28 +258,45 @@ class LawnchairAlphabeticalAppsList<T>(
         pendingFolderMerges.add(signature)
         // Ensure folder contents are hidden from the loose app list so the pair doesn't appear twice.
         if (!prefs.folderApps.get()) prefs.folderApps.set(true)
-        viewModel.createFolderWithItems(target.title?.toString().orEmpty(), listOf(source, target))
+        val title = target.title?.toString().orEmpty()
+        viewModel.createFolderWithItems(title, listOf(source, target)) { newId ->
+            // Render the folder the instant the insert commits, rather than waiting for the Room flow
+            // to re-emit (which reads as "nothing happened" and invites a repeat gesture). If the flow
+            // already delivered an equivalent folder, skip to avoid a transient duplicate.
+            val exists = folderList.any { mergeSignatureOfFolder(it) == signature }
+            if (!exists && folderList.none { it.id == newId }) {
+                val folderInfo = FolderInfo().apply {
+                    id = newId
+                    this.title = title
+                    add(source)
+                    add(target)
+                }
+                folderList.add(folderInfo)
+                updateAdapterItems()
+            }
+        }
     }
 
     private fun mergeSignature(a: AppInfo, b: AppInfo): String = listOf(a.toComponentKey().toString(), b.toComponentKey().toString()).sorted().joinToString("|")
 
     private fun mergeSignatureOfFolder(folder: FolderInfo): String = folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }.sorted().joinToString("|")
 
-    // Persists the current app sequence into drawerAppOrder and the folder sequence into drawerListOrder.
+    // Persists the interleaved manual order (folders + apps) into drawerGridOrder as "f:<id>"/"a:<key>"
+    // tokens, so a folder's position among the apps survives restarts.
     fun onDragEnd() {
         if (!isOwnOrderDragEnabled()) return
-        val newOrder = mAdapterItems
-            .filter { it.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON }
-            .mapNotNull { it.itemInfo?.toComponentKey()?.toString() }
-            .filter { it.isNotEmpty() }
-        prefs.drawerAppOrder.set(newOrder.joinToString(","))
-        val newFolderOrder = mAdapterItems
-            .filter { it.viewType == BaseAllAppsAdapter.VIEW_TYPE_FOLDER }
-            .mapNotNull { it.folderInfo?.id }
-            .filter { it > 0 }
-        if (newFolderOrder.isNotEmpty()) {
-            prefs.drawerListOrder.set(FolderOrderUtils.intListToString(newFolderOrder))
+        val tokens = mAdapterItems.mapNotNull { item ->
+            when (item.viewType) {
+                BaseAllAppsAdapter.VIEW_TYPE_ICON ->
+                    item.itemInfo?.toComponentKey()?.toString()?.takeIf { it.isNotEmpty() }?.let { "a:$it" }
+
+                BaseAllAppsAdapter.VIEW_TYPE_FOLDER ->
+                    item.folderInfo?.id?.takeIf { it > 0 }?.let { "f:$it" }
+
+                else -> null
+            }
         }
+        prefs.drawerGridOrder.set(tokens.joinToString(","))
     }
 
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {
