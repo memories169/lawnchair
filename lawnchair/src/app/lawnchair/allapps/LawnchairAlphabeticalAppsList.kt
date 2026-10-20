@@ -424,7 +424,7 @@ class LawnchairAlphabeticalAppsList<T>(
         val lx = (winX - loc[0]).toFloat()
         val ly = (winY - loc[1]).toFloat()
         var adapterPos: Int
-        val under = rv.findChildViewUnder(lx.toDouble(), ly.toDouble())
+        val under = rv.findChildViewUnder(lx, ly)
         if (under != null) {
             adapterPos = rv.getChildAdapterPosition(under)
         } else {
