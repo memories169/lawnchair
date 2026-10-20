@@ -184,6 +184,26 @@ class LawnchairAlphabeticalAppsList<T>(
         return true
     }
 
+    // [xperia-port] Stack-to-folder: two positions are eligible when both are standalone app icons
+    // and Manual drag is active. (Folders merging folders is intentionally not supported here.)
+    fun canMergeAt(from: Int, to: Int): Boolean {
+        if (!isOwnOrderDragEnabled()) return false
+        val a = mAdapterItems.getOrNull(from)?.viewType
+        val b = mAdapterItems.getOrNull(to)?.viewType
+        return a == BaseAllAppsAdapter.VIEW_TYPE_ICON && b == BaseAllAppsAdapter.VIEW_TYPE_ICON
+    }
+
+    // [xperia-port] Creates a folder from two apps that were stacked together, then refreshes the drawer.
+    // The merged apps disappear from the standalone list because "Apps in folder" excludes folder contents.
+    fun mergeAppsIntoFolder(from: Int, to: Int) {
+        if (!canMergeAt(from, to)) return
+        val source = mAdapterItems[from].itemInfo ?: return
+        val target = mAdapterItems[to].itemInfo ?: return
+        // Ensure folder contents are hidden from the loose app list so the pair doesn't appear twice.
+        if (!prefs.folderApps.get()) prefs.folderApps.set(true)
+        viewModel.createFolderWithItems(target.title?.toString().orEmpty(), listOf(source, target))
+    }
+
     // Persists the current app sequence into drawerAppOrder and the folder sequence into drawerListOrder.
     fun onDragEnd() {
         if (!isOwnOrderDragEnabled()) return

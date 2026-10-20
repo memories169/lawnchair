@@ -48,6 +48,15 @@ class FolderService(val context: Context) : SafeCloseable {
         folderDao.insertFolder(FolderInfoEntity(title = folderInfo.title.toString()))
     }
 
+    // [xperia-port] Creates a new folder pre-populated with the given apps (ordered by rank),
+    // returning the generated folder id. Used when two drawer apps are stacked to form a folder.
+    suspend fun createFolderWithItems(title: String, appInfos: List<AppInfo>): Long = withContext(Dispatchers.IO) {
+        folderDao.createFolderWithItems(
+            FolderInfoEntity(title = title),
+            appInfos.mapIndexed { index, appInfo -> appInfo.toEntity(0).copy(rank = index) },
+        )
+    }
+
     suspend fun updateFolderInfo(folderInfo: FolderInfo, hide: Boolean = false) = withContext(Dispatchers.IO) {
         folderDao.updateFolderInfo(folderInfo.id, folderInfo.title.toString(), hide)
     }

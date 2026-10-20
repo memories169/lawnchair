@@ -18,8 +18,22 @@ interface FolderDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFolder(folder: FolderInfoEntity)
 
+    // [xperia-port] Insert a brand-new folder and return its auto-generated row id, so callers can
+    // stamp folder items with the correct folderId (needed when creating a folder by merging apps).
+    @Insert
+    suspend fun insertFolderReturningId(folder: FolderInfoEntity): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFolderItems(items: List<FolderItemEntity>)
+
+    // [xperia-port] Creates a folder together with its items in one transaction. The caller passes
+    // items with a placeholder folderId; we remap them to the newly generated folder id here.
+    @Transaction
+    suspend fun createFolderWithItems(folder: FolderInfoEntity, items: List<FolderItemEntity>): Long {
+        val folderId = insertFolderReturningId(folder).toInt()
+        insertFolderItems(items.map { it.copy(folderId = folderId) })
+        return folderId.toLong()
+    }
 
     @Query("SELECT * FROM Folders WHERE id = :folderId")
     @Transaction

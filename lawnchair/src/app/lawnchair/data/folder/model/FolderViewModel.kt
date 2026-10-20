@@ -74,6 +74,14 @@ class FolderViewModel(
         }
     }
 
+    // [xperia-port] Creates a folder from a set of apps (e.g. two apps stacked together in the drawer).
+    fun createFolderWithItems(title: String, appInfos: List<AppInfo>) {
+        viewModelScope.launch {
+            repository.createFolderWithItems(title, appInfos)
+            reloadHelper.reloadGrid()
+        }
+    }
+
     fun deleteFolder(id: Int) {
         viewModelScope.launch {
             repository.deleteFolderInfo(id)
