@@ -20,6 +20,7 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
+import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import android.util.ArrayMap
@@ -34,6 +35,7 @@ import app.lawnchair.util.isPackageInstalled
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
+import com.android.launcher3.icons.ClockDrawableWrapper
 import com.android.launcher3.icons.IconProvider
 import com.android.launcher3.icons.ThemedIconDrawable
 import com.android.launcher3.util.ComponentKey
@@ -199,6 +201,19 @@ class LawnchairIconProvider @JvmOverloads constructor(
                 }
             }
         }
+        // [trebuchet-port] With no icon pack and theming off, the system clock/calendar apps reach
+        // here as their static icon. Replace it with a live face (analog clock / today's date) like
+        // Trebuchet, unless the framework already produced a dynamic drawable for this app.
+        if (defaultIcon !is ClockDrawableWrapper) {
+            val isClock = mClock != null &&
+                packageName == mClock.packageName &&
+                Process.myUserHandle() == user
+            val isCalendar = mCalendar != null && packageName == mCalendar.packageName
+            when {
+                isClock -> return LiveClockIconDrawable(defaultIcon)
+                isCalendar -> return LiveCalendarIconDrawable(defaultIcon)
+            }
+        }
         return defaultIcon
     }
 
@@ -283,11 +298,16 @@ class LawnchairIconProvider @JvmOverloads constructor(
 
         private fun recreateCalendarAndClockChangeReceiver() {
             val iconPack = IconPackProvider.INSTANCE.get(context).getIconPack(iconPackPref.get())
-            calendarAndClockChangeReceiver = if (iconPack != null) {
-                CalendarAndClockChangeReceiver(context, handler, iconPack, callback)
-            } else {
-                null
-            }
+            // [trebuchet-port] Always register: with an icon pack the dynamic components come from
+            // the pack; without one we still refresh the system clock/calendar live faces.
+            calendarAndClockChangeReceiver = CalendarAndClockChangeReceiver(
+                context,
+                handler,
+                iconPack,
+                mClock,
+                mCalendar,
+                callback,
+            )
         }
 
         override fun close() {
@@ -300,7 +320,9 @@ class LawnchairIconProvider @JvmOverloads constructor(
     private class CalendarAndClockChangeReceiver(
         private val context: Context,
         handler: Handler,
-        private val iconPack: IconPack,
+        private val iconPack: IconPack?,
+        private val clockComponent: ComponentName?,
+        private val calendarComponent: ComponentName?,
         private val callback: IconChangeListener,
     ) : BroadcastReceiver(),
         SafeCloseable {
@@ -316,21 +338,18 @@ class LawnchairIconProvider @JvmOverloads constructor(
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 ACTION_TIMEZONE_CHANGED, ACTION_TIME_CHANGED, ACTION_TIME_TICK -> {
+                    val packages = iconPack?.getClocks()?.map { it.packageName }
+                        ?: listOfNotNull(clockComponent?.packageName)
                     context.getSystemService<UserManager>()?.userProfiles?.forEach { user ->
-                        iconPack.getClocks().forEach { componentName ->
-                            callback.onAppIconChanged(
-                                componentName.packageName,
-                                user,
-                            )
-                        }
+                        packages.forEach { callback.onAppIconChanged(it, user) }
                     }
                 }
 
                 ACTION_DATE_CHANGED -> {
+                    val packages = iconPack?.getCalendars()?.map { it.packageName }
+                        ?: listOfNotNull(calendarComponent?.packageName)
                     context.getSystemService<UserManager>()?.userProfiles?.forEach { user ->
-                        iconPack.getCalendars().forEach { componentName ->
-                            callback.onAppIconChanged(componentName.packageName, user)
-                        }
+                        packages.forEach { callback.onAppIconChanged(it, user) }
                     }
                 }
             }
