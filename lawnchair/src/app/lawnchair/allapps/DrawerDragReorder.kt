@@ -100,6 +100,7 @@ fun attachDrawerDragReorder(launcher: Launcher) {
                 when {
                     mergeArmed && lastTargetPos != RecyclerView.NO_POSITION ->
                         apps.mergeAppsIntoFolder(from, lastTargetPos)
+
                     lastTargetPos != RecyclerView.NO_POSITION && lastTargetPos != from -> {
                         if (apps.onDragMove(from, lastTargetPos)) {
                             recyclerView.adapter?.notifyItemMoved(from, lastTargetPos)
