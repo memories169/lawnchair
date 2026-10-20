@@ -11,7 +11,6 @@ import android.content.Intent.ACTION_PACKAGE_CHANGED
 import android.content.Intent.ACTION_PACKAGE_REMOVED
 import android.content.Intent.ACTION_TIMEZONE_CHANGED
 import android.content.Intent.ACTION_TIME_CHANGED
-import android.content.Intent.ACTION_TIME_TICK
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.LauncherActivityInfo
@@ -21,7 +20,6 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Handler
-import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
 import android.provider.AlarmClock
@@ -37,7 +35,6 @@ import app.lawnchair.util.isPackageInstalled
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.android.launcher3.icons.ClockDrawableWrapper
 import com.android.launcher3.icons.IconProvider
 import com.android.launcher3.icons.ThemedIconDrawable
 import com.android.launcher3.util.ComponentKey
@@ -226,19 +223,10 @@ class LawnchairIconProvider @JvmOverloads constructor(
                 }
             }
         }
-        // [trebuchet-port] With no icon pack and theming off, the system clock/calendar apps reach
-        // here as their static icon. Replace it with a live face (analog clock / today's date) like
-        // Trebuchet, unless the framework already produced a dynamic drawable for this app.
-        if (defaultIcon !is ClockDrawableWrapper) {
-            val isClock = liveClockPackage != null &&
-                packageName == liveClockPackage &&
-                Process.myUserHandle() == user
-            val isCalendar = liveCalendarPackage != null && packageName == liveCalendarPackage
-            when {
-                isClock -> return LiveClockIconDrawable(defaultIcon)
-                isCalendar -> return LiveCalendarIconDrawable(defaultIcon)
-            }
-        }
+        // [trebuchet-port] The live clock/calendar faces are handled by the stock dynamic-icon path:
+        // config.xml points clock_component_name at the installed DeskClock so IconProvider produces
+        // an animated ClockDrawableWrapper (with a ticking second hand), and the Etar calendar ships
+        // its own live date icon. No custom wrapping needed here.
         return defaultIcon
     }
 
@@ -354,7 +342,6 @@ class LawnchairIconProvider @JvmOverloads constructor(
 
         init {
             val filter = IntentFilter(ACTION_TIMEZONE_CHANGED)
-            filter.addAction(ACTION_TIME_TICK)
             filter.addAction(ACTION_TIME_CHANGED)
             filter.addAction(ACTION_DATE_CHANGED)
             context.registerReceiver(this, filter, null, handler)
@@ -362,7 +349,7 @@ class LawnchairIconProvider @JvmOverloads constructor(
 
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_TIMEZONE_CHANGED, ACTION_TIME_CHANGED, ACTION_TIME_TICK -> {
+                ACTION_TIMEZONE_CHANGED, ACTION_TIME_CHANGED -> {
                     val packages = iconPack?.getClocks()?.map { it.packageName }
                         ?: listOfNotNull(clockPackage)
                     context.getSystemService<UserManager>()?.userProfiles?.forEach { user ->

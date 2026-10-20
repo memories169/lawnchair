@@ -43,6 +43,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-encryption-key: Da25KUVSE5jbGds2zXmfXw==
+      # [trebuchet-port] The icon loader lives in a submodule we can't push to, so flip the
+      # private DISABLE_SECONDS constant at build time to make the clock icon show a ticking
+      # second hand like Trebuchet. check-style is untouched (it runs on the pristine submodule).
+      - name: Enable clock second hand (trebuchet-port)
+        run: |
+          F=platform_frameworks_libs_systemui/iconloaderlib/src/com/android/launcher3/icons/ClockDrawableWrapper.java
+          sed -i 's/DISABLE_SECONDS = true/DISABLE_SECONDS = false/' "$F"
+          grep -q 'DISABLE_SECONDS = false' "$F" || { echo "clock second-hand patch failed to apply"; exit 1; }
       - name: Write sign info
         if: github.repository_owner == 'LawnchairLauncher'
         run: |
