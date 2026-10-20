@@ -448,7 +448,15 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         if (DEBUG) {
             Log.d(TAG, "onBackKey newTitle=" + newTitle);
         }
-        mInfo.setTitle(newTitle, mLauncherDelegate.getModelWriter());
+        // [xperia-port] App-drawer folders live in Room, not the Launcher model. Writing the title
+        // through ModelWriter collides with workspace item ids and crashes, so update in-memory only
+        // and persist the rename to Room.
+        if (isInAppDrawer()) {
+            mInfo.setTitle(newTitle, null);
+            app.lawnchair.allapps.DrawerFolderHost.renameFolder(getContext(), mInfo.id, newTitle);
+        } else {
+            mInfo.setTitle(newTitle, mLauncherDelegate.getModelWriter());
+        }
         mFolderIcon.onTitleChanged(newTitle);
 
         if (TextUtils.isEmpty(mInfo.title)) {
@@ -1147,6 +1155,16 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
     @Override
     public void onDropCompleted(final View target, final DragObject d,
                                 final boolean success) {
+        // [xperia-port] Drawer folders persist to Room, not the Launcher model. Skip the model-backed
+        // folder-replacement / setOption writes below; a drawer folder is dissolved via the adapter when
+        // it drops to a single app, so there is nothing to persist here.
+        if (isInAppDrawer()) {
+            mDeleteFolderOnDropCompleted = false;
+            mIsDragInProgress = false;
+            mItemAddedBackToSelfViaIcon = false;
+            mCurrentDragView = null;
+            return;
+        }
         if (success) {
             if (getItemCount() <= 1) {
                 mDeleteFolderOnDropCompleted = true;
@@ -1200,6 +1218,12 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
     }
 
     private void updateItemLocationsInDatabaseBatch(boolean isBind) {
+        // [xperia-port] Drawer folders are backed by Room; their synthetic FolderInfo reuses the Room
+        // folder id, which collides with workspace item ids. Writing locations/ranks back through the
+        // Launcher model here corrupts (or crashes on) the workspace, so skip it entirely for drawer.
+        if (isInAppDrawer()) {
+            return;
+        }
         FolderGridOrganizer verifier = createFolderGridOrganizer(
                 mActivityContext.getDeviceProfile()).setFolderInfo(mInfo);
 

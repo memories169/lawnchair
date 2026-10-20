@@ -61,6 +61,12 @@ class FolderService(val context: Context) : SafeCloseable {
         folderDao.updateFolderInfo(folderInfo.id, folderInfo.title.toString(), hide)
     }
 
+    // [xperia-port] Persists a folder rename directly to Room by id. Used by the stock drawer-folder
+    // popup, which otherwise tries to write the title to the Launcher model (crashes on id collision).
+    suspend fun renameFolder(folderId: Int, title: String) = withContext(Dispatchers.IO) {
+        folderDao.updateFolderInfo(folderId, title, false)
+    }
+
     suspend fun deleteFolderInfo(id: Int) = withContext(Dispatchers.IO) {
         folderDao.deleteFolder(id)
     }
