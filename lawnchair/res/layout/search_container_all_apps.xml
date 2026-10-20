@@ -96,7 +96,7 @@
             android:layout_height="@dimen/search_box_height"
             android:background="@drawable/pill_ripple"
             android:clickable="true"
-            android:contentDescription="@string/edit"
+            android:contentDescription="@string/drawer_edit_order_off"
             android:scaleType="fitCenter"
             android:padding="@dimen/qsb_icon_padding"
             android:src="@drawable/ic_drawer_edit"

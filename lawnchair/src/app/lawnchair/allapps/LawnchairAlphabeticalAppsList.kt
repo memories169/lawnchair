@@ -162,8 +162,7 @@ class LawnchairAlphabeticalAppsList<T>(
     // [xperia-port] Drag-reorder is only available in Manual (own-order) sort mode AND while the
     // in-drawer edit toggle (DrawerEditMode) is armed. When disarmed, long-press falls through to
     // Launcher's normal drag-to-home, so users never lose the ability to add apps to the workspace.
-    fun isOwnOrderDragEnabled(): Boolean =
-        prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER && DrawerEditMode.armed
+    fun isOwnOrderDragEnabled(): Boolean = prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER && DrawerEditMode.armed
 
     // Reorder targets both standalone apps and folders.
     fun isAppAtPosition(position: Int): Boolean {
