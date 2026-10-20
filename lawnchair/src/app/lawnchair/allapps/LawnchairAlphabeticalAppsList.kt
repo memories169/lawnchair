@@ -44,7 +44,8 @@ class LawnchairAlphabeticalAppsList<T>(
     private var folderList = mutableListOf<FolderInfo>()
     private val filteredList = mutableListOf<AppInfo>()
 
-    private val folderOrder = FolderOrderUtils.stringToIntList(prefs.drawerListOrder.get())
+    // [xperia-port] Read live so a persisted folder reorder takes effect without recreating the list.
+    private val folderOrder: List<Int> get() = FolderOrderUtils.stringToIntList(prefs.drawerListOrder.get())
 
     init {
         context.launcher.deviceProfile.inv.addOnChangeListener(this)
@@ -61,8 +62,9 @@ class LawnchairAlphabeticalAppsList<T>(
 
     private fun observeFolders() {
         viewModel.foldersLiveData.observe(context as LifecycleOwner) { folders ->
+            val order = folderOrder
             folderList = folders
-                .sortedBy { folderOrder.indexOf(it.id) }
+                .sortedBy { order.indexOf(it.id) }
                 .toMutableList()
             updateAdapterItems()
         }
@@ -103,9 +105,14 @@ class LawnchairAlphabeticalAppsList<T>(
                 position++
             }
         } else {
-            folderList.forEach { folder ->
+            // [xperia-port] Sort folders by the persisted order here (not just in observeFolders), so a
+            // drag-reorder persists immediately even when the folders LiveData does not re-emit.
+            val order = folderOrder
+            val orderedFolders = folderList.sortedBy { order.indexOf(it.id) }
+            orderedFolders.forEach { folder ->
                 if (folder.getContents().size > 1) {
                     val folderInfo = FolderInfo()
+                    folderInfo.id = folder.id // carry the DB id so onDragEnd can persist folder order
                     folderInfo.title = folder.title
                     mAdapterItems.add(AdapterItem.asFolder(folderInfo))
                     folder.getContents().forEach { app ->
@@ -152,23 +159,33 @@ class LawnchairAlphabeticalAppsList<T>(
         return position
     }
 
-    // [xperia-port] Drag-reorder support (OWN_ORDER mode only).
-    fun isOwnOrderDragEnabled(): Boolean = prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER
+    // [xperia-port] Drag-reorder is only available in Manual (own-order) sort mode AND while the
+    // in-drawer edit toggle (DrawerEditMode) is armed. When disarmed, long-press falls through to
+    // Launcher's normal drag-to-home, so users never lose the ability to add apps to the workspace.
+    fun isOwnOrderDragEnabled(): Boolean =
+        prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER && DrawerEditMode.armed
 
-    fun isAppAtPosition(position: Int): Boolean = mAdapterItems.getOrNull(position)?.viewType == BaseAllAppsAdapter.VIEW_TYPE_ICON
+    // Reorder targets both standalone apps and folders.
+    fun isAppAtPosition(position: Int): Boolean {
+        val type = mAdapterItems.getOrNull(position)?.viewType
+        return type == BaseAllAppsAdapter.VIEW_TYPE_ICON || type == BaseAllAppsAdapter.VIEW_TYPE_FOLDER
+    }
 
-    // Reorders the live adapter list in memory during a drag; returns false for non-app slots.
+    // Reorders the live adapter list in memory during a drag. Icons only swap with icons, folders only
+    // with folders (matches Xperia's same-viewType rule), so the folder block and app block stay intact.
     fun onDragMove(from: Int, to: Int): Boolean {
         if (!isOwnOrderDragEnabled()) return false
         if (from !in mAdapterItems.indices || to !in mAdapterItems.indices) return false
-        if (mAdapterItems[from].viewType != BaseAllAppsAdapter.VIEW_TYPE_ICON) return false
-        if (mAdapterItems[to].viewType != BaseAllAppsAdapter.VIEW_TYPE_ICON) return false
+        val fromType = mAdapterItems[from].viewType
+        val toType = mAdapterItems[to].viewType
+        if (fromType != toType) return false
+        if (fromType != BaseAllAppsAdapter.VIEW_TYPE_ICON && fromType != BaseAllAppsAdapter.VIEW_TYPE_FOLDER) return false
         val item = mAdapterItems.removeAt(from)
         mAdapterItems.add(to, item)
         return true
     }
 
-    // Persists the current app sequence into drawerAppOrder after a drag completes.
+    // Persists the current app sequence into drawerAppOrder and the folder sequence into drawerListOrder.
     fun onDragEnd() {
         if (!isOwnOrderDragEnabled()) return
         val newOrder = mAdapterItems
@@ -176,6 +193,13 @@ class LawnchairAlphabeticalAppsList<T>(
             .mapNotNull { it.itemInfo?.toComponentKey()?.toString() }
             .filter { it.isNotEmpty() }
         prefs.drawerAppOrder.set(newOrder.joinToString(","))
+        val newFolderOrder = mAdapterItems
+            .filter { it.viewType == BaseAllAppsAdapter.VIEW_TYPE_FOLDER }
+            .mapNotNull { it.folderInfo?.id }
+            .filter { it > 0 }
+        if (newFolderOrder.isNotEmpty()) {
+            prefs.drawerListOrder.set(FolderOrderUtils.intListToString(newFolderOrder))
+        }
     }
 
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {

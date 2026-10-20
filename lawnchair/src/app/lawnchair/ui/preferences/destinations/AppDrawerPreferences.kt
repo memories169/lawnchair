@@ -98,11 +98,11 @@ fun AppDrawerPreferences(
                         "Alphabetical"
                     },
                     ListPreferenceEntry(LawnchairAlphabeticalAppsList.SORT_MODE_OWN_ORDER) {
-                        "Manual (drag to reorder)"
+                        "Manual"
                     },
                 ),
                 label = "Sort apps",
-                description = "Manual lets you long-press and drag icons in the app drawer",
+                description = "Manual shows a pencil button in the drawer: tap it to reorder icons and folders, tap again to drag apps to the home screen",
             )
         }
         PreferenceGroup(heading = stringResource(R.string.style)) {

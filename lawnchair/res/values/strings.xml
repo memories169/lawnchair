@@ -921,4 +921,7 @@
     <string name="grant_requested_permissions_tap">Tap to grant permissions</string>
     <!-- Message shown when all home screen views are removed -->
     <string name="home_screen_all_views_removed_msg">Home screen cleared</string>
+    <!-- [xperia-port] App drawer edit-order toggle -->
+    <string name="drawer_edit_order_on">Editing order (tap to finish)</string>
+    <string name="drawer_edit_order_off">Edit icon order</string>
 </resources>

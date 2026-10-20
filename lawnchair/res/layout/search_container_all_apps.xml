@@ -89,6 +89,20 @@
         android:orientation="horizontal"
         tools:ignore="RtlSymmetry">
 
+        <!-- [xperia-port] Manual-sort only: toggles in-drawer edit (reorder) mode. Hidden unless sort mode is Manual. -->
+        <ImageButton
+            android:id="@+id/edit_order_btn"
+            android:layout_width="@dimen/qsb_icon_width"
+            android:layout_height="@dimen/search_box_height"
+            android:background="@drawable/pill_ripple"
+            android:clickable="true"
+            android:contentDescription="@string/edit"
+            android:scaleType="fitCenter"
+            android:padding="@dimen/qsb_icon_padding"
+            android:src="@drawable/ic_drawer_edit"
+            android:visibility="gone"
+            app:tint="?android:textColorSecondary" />
+
         <app.lawnchair.qsb.AssistantIconView
             android:id="@+id/mic_btn"
             android:layout_width="@dimen/qsb_icon_width"

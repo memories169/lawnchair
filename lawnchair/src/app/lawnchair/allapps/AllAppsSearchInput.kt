@@ -144,6 +144,26 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             }
         }
 
+        // [xperia-port] "Edit order" pencil toggle. Only shown in Manual (own-order) sort mode. When armed,
+        // a long-press reorders icons/folders inside the drawer; when disarmed, long-press does normal
+        // drag-to-home. This decouples reordering from drag-to-home so users no longer switch sort modes.
+        val editOrderBtn = ViewCompat.requireViewById<ImageButton>(this, R.id.edit_order_btn)
+        fun refreshEditButton() {
+            val manual = prefs.drawerSortMode.get() == LawnchairAlphabeticalAppsList.SORT_MODE_OWN_ORDER
+            if (!manual) DrawerEditMode.armed = false
+            editOrderBtn.isVisible = manual
+            editOrderBtn.isSelected = DrawerEditMode.armed
+            editOrderBtn.alpha = if (DrawerEditMode.armed) 1f else 0.6f
+            editOrderBtn.contentDescription = context.getString(
+                if (DrawerEditMode.armed) R.string.drawer_edit_order_on else R.string.drawer_edit_order_off,
+            )
+        }
+        editOrderBtn.setOnClickListener {
+            DrawerEditMode.armed = !DrawerEditMode.armed
+            refreshEditButton()
+        }
+        refreshEditButton()
+
         prefs2.themedHotseatQsb.subscribeBlocking(scope = viewAttachedScope) { themed ->
             with(searchIcon) {
                 isVisible = true
