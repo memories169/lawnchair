@@ -15,6 +15,7 @@ import android.content.Intent.ACTION_TIME_TICK
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.LauncherActivityInfo
+import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
@@ -23,6 +24,7 @@ import android.os.Handler
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import android.provider.AlarmClock
 import android.util.ArrayMap
 import android.util.Log
 import androidx.core.content.getSystemService
@@ -54,6 +56,29 @@ class LawnchairIconProvider @JvmOverloads constructor(
 
     private val iconPackProvider = IconPackProvider.INSTANCE.get(context)
     private val overrideRepo = IconOverrideRepository.INSTANCE.get(context)
+
+    // [trebuchet-port] Resolve the device's real clock/calendar packages. Lawnchair's config points
+    // these at the Google apps, which are absent on LineageOS, so use what the system actually
+    // resolves (clock) / a known installed calendar package instead of the hardcoded names.
+    private val liveClockPackage: String? by lazy {
+        resolveLaunchPackage(Intent(AlarmClock.ACTION_SET_ALARM))
+            ?: resolveLaunchPackage(Intent("android.intent.action.SHOW_ALARMS"))
+            ?: mClock?.packageName
+    }
+    private val liveCalendarPackage: String? by lazy {
+        val candidates = listOf(
+            "org.lineageos.etar",
+            "com.android.calendar",
+            "com.google.android.calendar",
+            mCalendar?.packageName,
+        )
+        candidates.firstOrNull { it != null && context.packageManager.isPackageInstalled(it) }
+    }
+
+    private fun resolveLaunchPackage(intent: Intent): String? {
+        val resolved = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolved?.activityInfo?.packageName
+    }
 
     private val iconPack
         get() = iconPackProvider.getIconPack(iconPackPref.get())?.apply { loadBlocking() }
@@ -205,10 +230,10 @@ class LawnchairIconProvider @JvmOverloads constructor(
         // here as their static icon. Replace it with a live face (analog clock / today's date) like
         // Trebuchet, unless the framework already produced a dynamic drawable for this app.
         if (defaultIcon !is ClockDrawableWrapper) {
-            val isClock = mClock != null &&
-                packageName == mClock.packageName &&
+            val isClock = liveClockPackage != null &&
+                packageName == liveClockPackage &&
                 Process.myUserHandle() == user
-            val isCalendar = mCalendar != null && packageName == mCalendar.packageName
+            val isCalendar = liveCalendarPackage != null && packageName == liveCalendarPackage
             when {
                 isClock -> return LiveClockIconDrawable(defaultIcon)
                 isCalendar -> return LiveCalendarIconDrawable(defaultIcon)
@@ -304,8 +329,8 @@ class LawnchairIconProvider @JvmOverloads constructor(
                 context,
                 handler,
                 iconPack,
-                mClock,
-                mCalendar,
+                liveClockPackage,
+                liveCalendarPackage,
                 callback,
             )
         }
@@ -321,8 +346,8 @@ class LawnchairIconProvider @JvmOverloads constructor(
         private val context: Context,
         handler: Handler,
         private val iconPack: IconPack?,
-        private val clockComponent: ComponentName?,
-        private val calendarComponent: ComponentName?,
+        private val clockPackage: String?,
+        private val calendarPackage: String?,
         private val callback: IconChangeListener,
     ) : BroadcastReceiver(),
         SafeCloseable {
@@ -339,7 +364,7 @@ class LawnchairIconProvider @JvmOverloads constructor(
             when (intent.action) {
                 ACTION_TIMEZONE_CHANGED, ACTION_TIME_CHANGED, ACTION_TIME_TICK -> {
                     val packages = iconPack?.getClocks()?.map { it.packageName }
-                        ?: listOfNotNull(clockComponent?.packageName)
+                        ?: listOfNotNull(clockPackage)
                     context.getSystemService<UserManager>()?.userProfiles?.forEach { user ->
                         packages.forEach { callback.onAppIconChanged(it, user) }
                     }
@@ -347,7 +372,7 @@ class LawnchairIconProvider @JvmOverloads constructor(
 
                 ACTION_DATE_CHANGED -> {
                     val packages = iconPack?.getCalendars()?.map { it.packageName }
-                        ?: listOfNotNull(calendarComponent?.packageName)
+                        ?: listOfNotNull(calendarPackage)
                     context.getSystemService<UserManager>()?.userProfiles?.forEach { user ->
                         packages.forEach { callback.onAppIconChanged(it, user) }
                     }
