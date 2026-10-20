@@ -132,7 +132,10 @@ class PreferenceManager private constructor(private val context: Context) :
 
     // [xperia-port] Interleaved manual order of the whole drawer: comma-separated tokens, each either
     // "f:<folderId>" or "a:<componentKey>". Used in ownOrder mode so folders and apps share one grid.
-    val drawerGridOrder = StringPref("pref_drawerGridOrder", "", reloadGrid)
+    // No reloadGrid listener: the drawer adapter is already correct after a drag and re-reads this on
+    // the next natural rebuild, so a full workspace re-bind (which re-triggers the AllApps zoom
+    // transition and caused a visible zoom in/out loop) is unnecessary here.
+    val drawerGridOrder = StringPref("pref_drawerGridOrder", "")
 
     val recentsActionScreenshot = BoolPref("pref_recentsActionScreenshot", !isOnePlusStock)
     val recentsActionShare = BoolPref("pref_recentsActionShare", isOnePlusStock)

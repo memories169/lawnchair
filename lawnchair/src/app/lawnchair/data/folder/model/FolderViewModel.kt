@@ -76,12 +76,29 @@ class FolderViewModel(
 
     // [xperia-port] Creates a folder from a set of apps (e.g. two apps stacked together in the drawer).
     // [onCreated] fires with the new folder's DB id once the insert commits, so the drawer can render
-    // the folder immediately instead of waiting for the Room flow to re-emit.
+    // the folder immediately instead of waiting for the Room flow to re-emit. No reloadGrid: the Room
+    // folders flow already refreshes the drawer in place via the apps-list observer, and a full grid
+    // reload re-triggered the AllApps zoom transition (the home-screen zoom in/out loop).
     fun createFolderWithItems(title: String, appInfos: List<AppInfo>, onCreated: (Int) -> Unit = {}) {
         viewModelScope.launch {
             val id = repository.createFolderWithItems(title, appInfos).toInt()
-            reloadHelper.reloadGrid()
             onCreated(id)
+        }
+    }
+
+    // [xperia-port] Overwrites a folder's contents (ordered by list index) WITHOUT a grid reload, so
+    // drawer add/remove-app-to-folder gestures refresh via the Room flow instead of re-animating the
+    // workspace. Used by the drag layer; the settings editor keeps using [updateFolderItems].
+    fun setFolderItems(id: Int, title: String, appInfos: List<AppInfo>) {
+        viewModelScope.launch {
+            repository.updateFolderWithItems(id, title, appInfos)
+        }
+    }
+
+    // [xperia-port] Deletes a folder WITHOUT a grid reload (drawer refreshes via the Room flow).
+    fun deleteFolderWithoutReload(id: Int) {
+        viewModelScope.launch {
+            repository.deleteFolderInfo(id)
         }
     }
 

@@ -48,6 +48,12 @@ class LawnchairAlphabeticalAppsList<T>(
     // still in flight (the Room flow hasn't re-emitted yet). Cleared once the DB list refreshes.
     private val pendingFolderMerges = mutableSetOf<String>()
 
+    // [xperia-port] Inline folder expansion: at most one folder is open at a time. Its member apps are
+    // rendered as loose-looking icons right after the folder icon and tracked in expandedChildKeys so the
+    // drag layer can tell a folder child from a standalone app (for drag-out / add-to-folder).
+    private var expandedFolderId: Int? = null
+    private val expandedChildKeys = mutableSetOf<String>()
+
     // [xperia-port] Read live so a persisted folder reorder takes effect without recreating the list.
     private val folderOrder: List<Int> get() = FolderOrderUtils.stringToIntList(prefs.drawerListOrder.get())
 
@@ -153,6 +159,7 @@ class LawnchairAlphabeticalAppsList<T>(
     // (drawerGridOrder: "f:<id>"/"a:<key>" tokens). Anything not yet ordered is appended (folders, then
     // remaining apps alphabetically), so newly installed apps and new folders still show up.
     private fun addInterleavedOwnOrder(appList: List<AppInfo?>, startPosition: Int): Int {
+        expandedChildKeys.clear()
         val order = prefs.drawerGridOrder.get()
             .split(",")
             .map { it.trim() }
@@ -179,8 +186,7 @@ class LawnchairAlphabeticalAppsList<T>(
                     val id = token.substring(2).toIntOrNull() ?: continue
                     val folder = folders[id] ?: continue
                     if (placedFolders.add(id)) {
-                        addFolderItem(folder)
-                        position++
+                        position += placeFolderAndChildren(folder)
                     }
                 }
 
@@ -198,8 +204,7 @@ class LawnchairAlphabeticalAppsList<T>(
         // Append folders not present in the saved order (e.g. just created), then remaining apps.
         folders.values.forEach { folder ->
             if (placedFolders.add(folder.id)) {
-                addFolderItem(folder)
-                position++
+                position += placeFolderAndChildren(folder)
             }
         }
         looseApps.entries
@@ -211,6 +216,22 @@ class LawnchairAlphabeticalAppsList<T>(
             }
         return position
     }
+
+    // [xperia-port] Renders a folder icon and, when it is the expanded one, its member apps as child
+    // icons right after it. Returns the number of adapter items added (1 + children when expanded).
+    private fun placeFolderAndChildren(folder: FolderInfo): Int {
+        addFolderItem(folder)
+        if (folder.id != expandedFolderId) return 1
+        var added = 1
+        contentsAsAppInfos(folder).forEach { child ->
+            mAdapterItems.add(AdapterItem.asApp(child))
+            expandedChildKeys.add(child.toComponentKey().toString())
+            added++
+        }
+        return added
+    }
+
+    private fun contentsAsAppInfos(folder: FolderInfo): List<AppInfo> = folder.getContents().mapNotNull { it as? AppInfo }
 
     // [xperia-port] Drag-reorder is only available in Manual (own-order) sort mode AND while the
     // in-drawer edit toggle (DrawerEditMode) is armed. When disarmed, long-press falls through to
@@ -235,19 +256,94 @@ class LawnchairAlphabeticalAppsList<T>(
         return true
     }
 
-    // [xperia-port] Stack-to-folder: two positions are eligible when both are standalone app icons
-    // and Manual drag is active. (Folders merging folders is intentionally not supported here.)
-    fun canMergeAt(from: Int, to: Int): Boolean {
+    // [xperia-port] Stack-to-folder / add-to-folder / drag-out, decided at drop by the drag layer.
+    // Returns true when a structural change was made (folder created, app added, or child ejected) so
+    // the list rebuilds from the DB; false means it was a plain reorder and the caller persists order.
+    // [overlap] is the fraction (0..1) the released icon overlaps the item under its centre.
+    fun handleDrop(from: Int, to: Int, overlap: Float): Boolean {
         if (!isOwnOrderDragEnabled()) return false
-        val a = mAdapterItems.getOrNull(from)?.viewType
-        val b = mAdapterItems.getOrNull(to)?.viewType
-        return a == BaseAllAppsAdapter.VIEW_TYPE_ICON && b == BaseAllAppsAdapter.VIEW_TYPE_ICON
+        if (from !in mAdapterItems.indices || to !in mAdapterItems.indices) return false
+        val fromKind = kindAt(from)
+        val toKind = kindAt(to)
+        // Dragging a folder child: dropping it outside its (expanded) folder ejects it back to the grid.
+        if (fromKind == Kind.CHILD) {
+            if (toKind != Kind.CHILD) {
+                ejectChildFromFolder(from)
+                return true
+            }
+            return false
+        }
+        if (overlap >= MERGE_OVERLAP_RATIO) {
+            if (fromKind == Kind.APP && toKind == Kind.APP) {
+                mergeAppsIntoFolder(from, to)
+                return true
+            }
+            if (fromKind == Kind.APP && toKind == Kind.FOLDER) {
+                addAppIntoFolder(from, to)
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun kindAt(pos: Int): Kind {
+        val item = mAdapterItems.getOrNull(pos) ?: return Kind.OTHER
+        return when (item.viewType) {
+            BaseAllAppsAdapter.VIEW_TYPE_FOLDER -> Kind.FOLDER
+
+            BaseAllAppsAdapter.VIEW_TYPE_ICON -> {
+                val key = item.itemInfo?.toComponentKey()?.toString()
+                if (key != null && key in expandedChildKeys) Kind.CHILD else Kind.APP
+            }
+
+            else -> Kind.OTHER
+        }
+    }
+
+    private fun isOwnOrderMode(): Boolean = prefs.drawerSortMode.get() == SORT_MODE_OWN_ORDER
+
+    // [xperia-port] Tap on a drawer folder toggles its inline expansion (shows/hides its apps in place).
+    fun toggleFolderExpanded(folderId: Int) {
+        if (!isOwnOrderMode() || folderId <= 0) return
+        expandedFolderId = if (expandedFolderId == folderId) null else folderId
+        updateAdapterItems()
+    }
+
+    // [xperia-port] Drops a standalone app into an existing folder (persisted via Room, no grid reload).
+    fun addAppIntoFolder(appPos: Int, folderPos: Int) {
+        if (!isOwnOrderDragEnabled()) return
+        val app = mAdapterItems.getOrNull(appPos)?.itemInfo ?: return
+        val folderId = mAdapterItems.getOrNull(folderPos)?.folderInfo?.id ?: return
+        val folder = folderList.find { it.id == folderId } ?: return
+        val key = app.toComponentKey().toString()
+        val contents = contentsAsAppInfos(folder)
+        if (contents.any { it.toComponentKey().toString() == key }) return
+        viewModel.setFolderItems(folderId, folder.title?.toString().orEmpty(), contents + app)
+    }
+
+    // [xperia-port] Removes a child app from the expanded folder. If only one app is left, the folder is
+    // deleted (dissolved) so its remaining app returns to the grid as a standalone icon.
+    fun ejectChildFromFolder(childPos: Int) {
+        if (!isOwnOrderDragEnabled()) return
+        val app = mAdapterItems.getOrNull(childPos)?.itemInfo ?: return
+        val folderId = expandedFolderId ?: return
+        val folder = folderList.find { it.id == folderId } ?: return
+        val key = app.toComponentKey().toString()
+        val remaining = contentsAsAppInfos(folder).filter { it.toComponentKey().toString() != key }
+        if (remaining.size <= 1) {
+            viewModel.deleteFolderWithoutReload(folderId)
+        } else {
+            viewModel.setFolderItems(folderId, folder.title?.toString().orEmpty(), remaining)
+        }
+        expandedFolderId = null
+        expandedChildKeys.remove(key)
     }
 
     // [xperia-port] Creates a folder from two apps that were stacked together, then refreshes the drawer.
     // The merged apps disappear from the standalone list because "Apps in folder" excludes folder contents.
     fun mergeAppsIntoFolder(from: Int, to: Int) {
-        if (!canMergeAt(from, to)) return
+        if (!isOwnOrderDragEnabled()) return
+        if (kindAt(from) != Kind.APP || kindAt(to) != Kind.APP) return
         val source = mAdapterItems[from].itemInfo ?: return
         val target = mAdapterItems[to].itemInfo ?: return
         val signature = mergeSignature(source, target)
@@ -281,16 +377,17 @@ class LawnchairAlphabeticalAppsList<T>(
 
     private fun mergeSignatureOfFolder(folder: FolderInfo): String = folder.getContents().mapNotNull { (it as? AppInfo)?.toComponentKey()?.toString() }.sorted().joinToString("|")
 
-    // Persists the interleaved manual order (folders + apps) into drawerGridOrder as "f:<id>"/"a:<key>"
-    // tokens, so a folder's position among the apps survives restarts.
+    // Persists the interleaved manual order (folders + standalone apps) into drawerGridOrder as
+    // "f:<id>"/"a:<key>" tokens, so a folder's position among the apps survives restarts. Expanded folder
+    // children are intentionally skipped (their order lives in the folder's DB rank, not the grid order).
     fun onDragEnd() {
         if (!isOwnOrderDragEnabled()) return
-        val tokens = mAdapterItems.mapNotNull { item ->
-            when (item.viewType) {
-                BaseAllAppsAdapter.VIEW_TYPE_ICON ->
+        val tokens = mAdapterItems.mapIndexedNotNull { index, item ->
+            when (kindAt(index)) {
+                Kind.APP ->
                     item.itemInfo?.toComponentKey()?.toString()?.takeIf { it.isNotEmpty() }?.let { "a:$it" }
 
-                BaseAllAppsAdapter.VIEW_TYPE_FOLDER ->
+                Kind.FOLDER ->
                     item.folderInfo?.id?.takeIf { it > 0 }?.let { "f:$it" }
 
                 else -> null
@@ -303,8 +400,15 @@ class LawnchairAlphabeticalAppsList<T>(
         onAppsUpdated()
     }
 
+    // [xperia-port] High-level classification of a drawer slot, used to disambiguate drop gestures.
+    private enum class Kind { APP, FOLDER, CHILD, OTHER }
+
     companion object {
         const val SORT_MODE_ALPHABETICAL = "alphabetical"
         const val SORT_MODE_OWN_ORDER = "ownOrder"
+
+        // Fraction of the dragged icon that must overlap the item under its centre to stack/merge rather
+        // than reorder. Tuned for a deliberate "drop on top"; adjust here if merges feel too eager/loose.
+        const val MERGE_OVERLAP_RATIO = 0.5f
     }
 }

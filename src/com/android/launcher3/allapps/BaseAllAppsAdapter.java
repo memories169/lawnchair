@@ -362,6 +362,15 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                 // [xperia-port] Give drawer folders the same long-press handler as icons so an armed
                 // edit-mode long-press starts a reorder drag (see LawnchairLauncher override).
                 drawerFolderIcon.setOnLongClickListener(mOnIconLongClickListener);
+                // [xperia-port] Tap toggles inline expansion (instead of opening the workspace folder
+                // popup) so the folder's apps appear in place and can be dragged out. Manual mode only.
+                final int tappedFolderId = folderInfo.getId();
+                drawerFolderIcon.setOnClickListener(v -> {
+                    if (mApps instanceof app.lawnchair.allapps.LawnchairAlphabeticalAppsList) {
+                        ((app.lawnchair.allapps.LawnchairAlphabeticalAppsList<?>) mApps)
+                                .toggleFolderExpanded(tappedFolderId);
+                    }
+                });
                 break;
             default:
                 if (mAdapterProvider.isViewSupported(holder.getItemViewType())) {

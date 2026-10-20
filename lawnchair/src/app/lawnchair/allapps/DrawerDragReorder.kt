@@ -1,5 +1,6 @@
 package app.lawnchair.allapps
 
+import android.graphics.Rect
 import android.view.View
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.ItemTouchHelper.DOWN
@@ -13,10 +14,6 @@ import java.util.WeakHashMap
 
 // Grid supports free movement in all four directions (matches Xperia Home's drag flags = 0xf).
 private val DRAG_DIRS = UP or DOWN or LEFT or RIGHT
-
-// [xperia-port] How long a dragged icon must dwell over a neighbouring icon (no target change) before
-// releasing creates a folder instead of a reorder. Tuned for a deliberate "stack" gesture.
-private const val MERGE_DWELL_MS = 300L
 
 // One ItemTouchHelper per drawer RecyclerView; kept weakly so it never leaks the view.
 private val dragHelpers = WeakHashMap<RecyclerView, ItemTouchHelper>()
@@ -32,14 +29,15 @@ fun attachDrawerDragReorder(launcher: Launcher) {
         val apps = (rv as? AllAppsRecyclerView)?.apps as? LawnchairAlphabeticalAppsList<*>
             ?: return@post
         if (dragHelpers.containsKey(rv)) return@post
-        // [xperia-port] Decide-at-drop model: the drawer is a packed, flowing grid, so live shifting
-        // can't be told apart from stacking. We therefore never reorder mid-drag; the dragged icon just
-        // follows the finger. On release we either merge it into the icon it dwelled on (folder) or move
-        // it to the slot it is hovering over (reorder).
-        var lastTargetPos = RecyclerView.NO_POSITION
-        var mergeArmed = false
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        var mergeTimer: Runnable? = null
+        // [xperia-port] Live-shift + drop-on-top model (Xperia Home style): neighbours reflow in real
+        // time as you drag (onMove swaps them), and on release we look at how far the dragged icon
+        // overlaps the icon under its centre. A heavy overlap means "drop on top" -> stack into a folder
+        // / add to folder / eject a child; a light overlap is just a reorder, whose order we persist.
+        val dragRect = Rect()
+        val childRect = Rect()
+        val loc = IntArray(2)
+        var bestTargetPos = RecyclerView.NO_POSITION
+        var bestOverlap = 0f
         val callback = object : ItemTouchHelper.SimpleCallback(DRAG_DIRS, 0) {
             override fun isLongPressDragEnabled(): Boolean = false
 
@@ -58,10 +56,8 @@ fun attachDrawerDragReorder(launcher: Launcher) {
             ) {
                 super.onSelectedChanged(viewHolder, actionState)
                 if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
-                    lastTargetPos = RecyclerView.NO_POSITION
-                    mergeArmed = false
-                    mergeTimer?.let { handler.removeCallbacks(it) }
-                    mergeTimer = null
+                    bestTargetPos = RecyclerView.NO_POSITION
+                    bestOverlap = 0f
                 }
             }
 
@@ -73,43 +69,61 @@ fun attachDrawerDragReorder(launcher: Launcher) {
                 val from = viewHolder.bindingAdapterPosition
                 val to = target.bindingAdapterPosition
                 if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
-                if (to == lastTargetPos) return false
-                // A new neighbour is now under the finger: restart the dwell timer. onMove only fires on
-                // ACTION_MOVE, so we arm the merge with a Handler postDelayed instead of a time check.
-                lastTargetPos = to
-                mergeArmed = false
-                mergeTimer?.let { handler.removeCallbacks(it) }
-                if (apps.canMergeAt(from, to)) {
-                    val timer = Runnable { mergeArmed = true }
-                    mergeTimer = timer
-                    handler.postDelayed(timer, MERGE_DWELL_MS)
-                } else {
-                    mergeTimer = null
+                // Live shift: mutate the backing list, notify the adapter so RecyclerView animates the
+                // neighbours into place in real time, and let ItemTouchHelper continue the drag.
+                if (apps.onDragMove(from, to)) {
+                    recyclerView.adapter?.notifyItemMoved(from, to)
+                    return true
                 }
-                // Never mutate the list here; the decision is made on drop in clearView().
                 return false
+            }
+
+            override fun onChildDraw(
+                c: android.graphics.Canvas,
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean,
+            ) {
+                super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+                if (!isCurrentlyActive) return
+                val dragged = viewHolder.itemView
+                dragged.getLocationInWindow(loc)
+                dragRect.set(loc[0], loc[1], loc[0] + dragged.width, loc[1] + dragged.height)
+                val dragArea = dragRect.width().coerceAtLeast(1) * dragRect.height().coerceAtLeast(1)
+                bestTargetPos = RecyclerView.NO_POSITION
+                bestOverlap = 0f
+                for (i in 0 until recyclerView.childCount) {
+                    val child = recyclerView.getChildAt(i) ?: continue
+                    if (child === dragged) continue
+                    child.getLocationInWindow(loc)
+                    childRect.set(loc[0], loc[1], loc[0] + child.width, loc[1] + child.height)
+                    if (!childRect.intersect(dragRect)) continue
+                    val interArea = childRect.width().coerceAtLeast(0) * childRect.height().coerceAtLeast(0)
+                    val ratio = interArea.toFloat() / dragArea.toFloat()
+                    if (ratio > bestOverlap) {
+                        bestOverlap = ratio
+                        bestTargetPos = recyclerView.getChildAdapterPosition(child)
+                    }
+                }
             }
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
 
             override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-                super.clearView(recyclerView, viewHolder)
-                mergeTimer?.let { handler.removeCallbacks(it) }
-                mergeTimer = null
                 val from = viewHolder.bindingAdapterPosition
-                when {
-                    mergeArmed && lastTargetPos != RecyclerView.NO_POSITION ->
-                        apps.mergeAppsIntoFolder(from, lastTargetPos)
-
-                    lastTargetPos != RecyclerView.NO_POSITION && lastTargetPos != from -> {
-                        if (apps.onDragMove(from, lastTargetPos)) {
-                            recyclerView.adapter?.notifyItemMoved(from, lastTargetPos)
-                            apps.onDragEnd()
-                        }
-                    }
-                }
-                lastTargetPos = RecyclerView.NO_POSITION
-                mergeArmed = false
+                val target = bestTargetPos
+                val overlap = bestOverlap
+                super.clearView(recyclerView, viewHolder)
+                bestTargetPos = RecyclerView.NO_POSITION
+                bestOverlap = 0f
+                if (from == RecyclerView.NO_POSITION) return
+                // Structural drops (merge / add / eject) rebuild from the DB; a plain reorder keeps the
+                // live-shifted adapter state, so we persist the new grid order.
+                val structural = target != RecyclerView.NO_POSITION && apps.handleDrop(from, target, overlap)
+                if (!structural) apps.onDragEnd()
             }
         }
         val itemTouchHelper = ItemTouchHelper(callback)
