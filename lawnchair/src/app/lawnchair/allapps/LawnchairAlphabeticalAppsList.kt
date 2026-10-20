@@ -266,9 +266,7 @@ class LawnchairAlphabeticalAppsList<T>(
         val item = mAdapterItems.getOrNull(pos) ?: return Kind.OTHER
         return when (item.viewType) {
             BaseAllAppsAdapter.VIEW_TYPE_FOLDER -> Kind.FOLDER
-
             BaseAllAppsAdapter.VIEW_TYPE_ICON -> Kind.APP
-
             else -> Kind.OTHER
         }
     }
