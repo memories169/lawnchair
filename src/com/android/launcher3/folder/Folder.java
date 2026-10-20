@@ -403,12 +403,7 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         if (dragObject.dragSource != this) {
             return;
         }
-        if (isInAppDrawer()) {
-            close(true);
-            // Do not remove item
-            return;
-        }
-        
+
         mContent.removeItem(mCurrentDragView);
         mItemsInvalidated = true;
 
@@ -1156,8 +1151,9 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
     public void onDropCompleted(final View target, final DragObject d,
                                 final boolean success) {
         // [xperia-port] Drawer folders persist to Room, not the Launcher model. Skip the model-backed
-        // folder-replacement / setOption writes below; a drawer folder is dissolved via the adapter when
-        // it drops to a single app, so there is nothing to persist here.
+        // folder-replacement / setOption writes below; a drawer folder is dissolved via Room (see
+        // DrawerFolderHost.eject) when an app is dragged out and only one remains, so nothing to persist
+        // here.
         if (isInAppDrawer()) {
             mDeleteFolderOnDropCompleted = false;
             mIsDragInProgress = false;
@@ -1409,6 +1405,13 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
     @Override
     public void onDrop(DragObject d, DragOptions options) {
+        // [xperia-port] Drawer folders are backed by Room, so they bypass the model-based re-add /
+        // reorder below. A release on the panel returns the item; one off the panel ejects it from the
+        // folder (the app stays in the drawer, and the folder dissolves when a single app remains).
+        if (isInAppDrawer()) {
+            handleDrawerDrop(d);
+            return;
+        }
         // If the icon was dropped while the page was being scrolled, we need to compute
         // the target location again such that the icon is placed of the final page.
         if (!mContent.rankOnCurrentPage(mEmptyCellRank)) {
@@ -1514,6 +1517,37 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         }
         mStatsLogManager.logger().withItemInfo(d.dragInfo).withInstanceId(d.logInstanceId)
                 .log(LAUNCHER_ITEM_DROP_COMPLETED);
+    }
+
+    // [xperia-port] Drop handling for app-drawer folders (Room-backed). d.x/d.y are in this Folder's
+    // coordinate space (DragController remapped them). Inside the panel bounds -> put the item back; outside
+    // -> persist the removal to Room via DrawerFolderHost and close the popup.
+    private void handleDrawerDrop(DragObject d) {
+        mIsDragInProgress = false;
+        ItemInfo si = d.dragInfo;
+        boolean inside = d.x >= 0 && d.y >= 0 && d.x < getWidth() && d.y < getHeight();
+        if (inside) {
+            View v = mCurrentDragView != null ? mCurrentDragView : mContent.createNewView(si);
+            int rank = mEmptyCellRank >= 0 && mEmptyCellRank <= mInfo.getContents().size()
+                    ? mEmptyCellRank : mInfo.getContents().size();
+            mContent.addViewForRank(v, si, rank);
+            v.setVisibility(VISIBLE);
+            mCurrentDragView = null;
+            try (SuppressInfoChanges s = new SuppressInfoChanges()) {
+                mInfo.add(si, rank, false);
+            }
+            mItemsInvalidated = true;
+            rearrangeChildren();
+            d.deferDragViewCleanupPostAnimation = false;
+        } else {
+            String key = si instanceof com.android.launcher3.model.data.AppInfo
+                    ? ((com.android.launcher3.model.data.AppInfo) si).toComponentKey().toString()
+                    : null;
+            app.lawnchair.allapps.DrawerFolderHost.eject(getContext(), mInfo.id, key);
+            mCurrentDragView = null;
+            d.deferDragViewCleanupPostAnimation = false;
+            close(true);
+        }
     }
 
     // This is used so the item doesn't immediately appear in the folder when added. In one case
@@ -1664,6 +1698,14 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
     @Override
     public void getHitRectRelativeToDragLayer(Rect outRect) {
+        // [xperia-port] While dragging an app out of a drawer folder, claim the whole drag layer so the
+        // release never falls through to the Workspace (which would drop a home-screen icon). onDrop then
+        // decides: release on the panel -> return the item; off the panel -> eject from the folder.
+        if (isInAppDrawer() && mIsDragInProgress && getParent() instanceof View) {
+            View layer = (View) getParent();
+            outRect.set(0, 0, layer.getWidth(), layer.getHeight());
+            return;
+        }
         getHitRect(outRect);
         outRect.left -= mScrollAreaOffset;
         outRect.right += mScrollAreaOffset;

@@ -23,4 +23,18 @@ object DrawerFolderHost {
             runCatching { service.renameFolder(folderId, title) }
         }
     }
+
+    /**
+     * Ejects an app from a drawer folder (drag-out). Persists to Room: removes the app from the folder,
+     * or dissolves the folder entirely when only one app would remain. The app reappears as a standalone
+     * drawer icon via the Room flow re-emit.
+     */
+    @JvmStatic
+    fun eject(context: Context, folderId: Int, componentKey: String?) {
+        if (folderId <= 0 || componentKey.isNullOrEmpty()) return
+        val service = FolderService.INSTANCE.get(context.applicationContext)
+        scope.launch {
+            runCatching { service.ejectAppFromFolder(folderId, componentKey) }
+        }
+    }
 }

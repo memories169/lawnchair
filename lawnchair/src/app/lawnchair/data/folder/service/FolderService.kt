@@ -67,6 +67,20 @@ class FolderService(val context: Context) : SafeCloseable {
         folderDao.updateFolderInfo(folderId, title, false)
     }
 
+    // [xperia-port] Removes one app from a drawer folder (drag-out eject). The ejected app stays in the
+    // drawer (all apps always appear there). If the folder would drop to a single app, it is dissolved
+    // entirely; its remaining app then also appears as a standalone drawer icon.
+    suspend fun ejectAppFromFolder(folderId: Int, componentKey: String) = withContext(Dispatchers.IO) {
+        val folder = folderDao.getFolderWithItems(folderId) ?: return@withContext
+        val remaining = folder.items.sortedBy { it.rank }.filterNot { it.componentKey == componentKey }
+        folderDao.deleteFolderItemsByFolderId(folderId)
+        if (remaining.size <= 1) {
+            folderDao.deleteFolder(folderId)
+        } else {
+            folderDao.insertFolderItems(remaining.mapIndexed { index, item -> item.copy(rank = index) })
+        }
+    }
+
     suspend fun deleteFolderInfo(id: Int) = withContext(Dispatchers.IO) {
         folderDao.deleteFolder(id)
     }
