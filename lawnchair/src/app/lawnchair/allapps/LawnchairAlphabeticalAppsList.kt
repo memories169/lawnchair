@@ -49,10 +49,6 @@ class LawnchairAlphabeticalAppsList<T>(
     // still in flight (the Room flow hasn't re-emitted yet). Cleared once the DB list refreshes.
     private val pendingFolderMerges = mutableSetOf<String>()
 
-    // [xperia-port] Set by a stack-to-folder merge so the folder icon animates in the next time it
-    // binds (see BaseAllAppsAdapter VIEW_TYPE_FOLDER). Consumed once by [consumeNewFolderAnimFlag].
-    private var newFolderAnimId: Int? = null
-
     // [xperia-port] Read live so a persisted folder reorder takes effect without recreating the list.
     private val folderOrder: List<Int> get() = FolderOrderUtils.stringToIntList(prefs.drawerListOrder.get())
 
@@ -326,7 +322,6 @@ class LawnchairAlphabeticalAppsList<T>(
                 val order = snapshot.filterNot { it == srcTok || it == tgtTok }.toMutableList()
                 order.add(anchor.coerceIn(0, order.size), "f:$newId")
                 prefs.drawerGridOrder.set(order.joinToString(","))
-                newFolderAnimId = newId
                 updateAdapterItems()
             }
         }
@@ -451,16 +446,6 @@ class LawnchairAlphabeticalAppsList<T>(
         }
         if (adapterPos < 0) adapterPos = 0
         return (0 until adapterPos.coerceAtMost(mAdapterItems.size)).count { kindAt(it) != Kind.OTHER }
-    }
-
-    // [xperia-port] Returns true (once) if the given folder was just created by a merge, so the adapter
-    // animates its icon in. Cleared after the first read.
-    fun consumeNewFolderAnimFlag(folderId: Int): Boolean {
-        if (newFolderAnimId == folderId) {
-            newFolderAnimId = null
-            return true
-        }
-        return false
     }
 
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {

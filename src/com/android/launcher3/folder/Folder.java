@@ -909,6 +909,29 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
 
         int size = getIconsInReadingOrder().size();
         if (size <= 1) {
+            // [xperia-port] A drawer folder being dissolved (its last app dragged out) lands here with
+            // the single surviving icon. The stock snap-close (closeComplete(false)) removes the popup
+            // in one frame, which reads as a screen flash. Fade/scale the panel out instead.
+            if (isInAppDrawer() && size == 1) {
+                cancelRunningAnimations();
+                mIsAnimatingClosed = true;
+                animate()
+                        .alpha(0f)
+                        .scaleX(0.92f)
+                        .scaleY(0.92f)
+                        .setDuration(180)
+                        .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                        .withEndAction(() -> {
+                            mIsAnimatingClosed = false;
+                            setAlpha(1f);
+                            setScaleX(1f);
+                            setScaleY(1f);
+                            closeComplete(true);
+                            post(this::announceAccessibilityChanges);
+                        })
+                        .start();
+                return;
+            }
             Log.d(TAG, "Couldn't animate folder closed because there's " + size + " icons");
             closeComplete(false);
             post(this::announceAccessibilityChanges);

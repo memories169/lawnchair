@@ -364,20 +364,8 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                 drawerFolderIcon.setOnLongClickListener(mOnIconLongClickListener);
                 // [xperia-port] Tap uses the default item click (Folder.animateOpen) so the folder opens
                 // as a real popup showing its apps (stock / Xperia behaviour). No click override here.
-                // [xperia-port] A folder that was just created by stacking two apps gets a brief
-                // scale/overshoot animation so the merge is visible, like Xperia Home.
-                if (mApps instanceof app.lawnchair.allapps.LawnchairAlphabeticalAppsList
-                        && ((app.lawnchair.allapps.LawnchairAlphabeticalAppsList<?>) mApps)
-                                .consumeNewFolderAnimFlag(folderInfo.id)) {
-                    drawerFolderIcon.setScaleX(0f);
-                    drawerFolderIcon.setScaleY(0f);
-                    drawerFolderIcon.setAlpha(0f);
-                    drawerFolderIcon.animate()
-                            .scaleX(1f).scaleY(1f).alpha(1f)
-                            .setDuration(220)
-                            .setInterpolator(new android.view.animation.OvershootInterpolator(1.4f))
-                            .start();
-                }
+                // [xperia-port] No appear animation: the scale/alpha pop used to read as a one-frame
+                // flash when a folder was created by stacking two apps. The folder now renders instantly.
                 break;
             default:
                 if (mAdapterProvider.isViewSupported(holder.getItemViewType())) {
