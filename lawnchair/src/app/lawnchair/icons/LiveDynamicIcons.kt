@@ -26,8 +26,7 @@ import kotlin.math.sin
 // then-current time/date) by the TIME_TICK / DATE_CHANGED refresh wired in LawnchairIconProvider.
 
 /** Wraps [base]'s background layer with a live analog clock face foreground. */
-class LiveClockIconDrawable(base: Drawable?) :
-        CustomAdaptiveIconDrawable(liveBackgroundOf(base, "#5F6368"), ClockFaceDrawable()) {
+class LiveClockIconDrawable(base: Drawable?) : CustomAdaptiveIconDrawable(liveBackgroundOf(base, "#5F6368"), ClockFaceDrawable()) {
 
     private class ClockFaceDrawable : Drawable() {
         private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -40,11 +39,6 @@ class LiveClockIconDrawable(base: Drawable?) :
         }
         private val hand = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#1F1F1F")
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-        }
-        private val second = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#D93025")
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
@@ -70,9 +64,11 @@ class LiveClockIconDrawable(base: Drawable?) :
             for (i in 0 until 12) {
                 val a = Math.toRadians(i * 30.0 - 90.0)
                 canvas.drawLine(
-                        cx + (r * 0.82f) * cos(a).toFloat(), cy + (r * 0.82f) * sin(a).toFloat(),
-                        cx + (r * 0.96f) * cos(a).toFloat(), cy + (r * 0.96f) * sin(a).toFloat(),
-                        dial,
+                    cx + (r * 0.82f) * cos(a).toFloat(),
+                    cy + (r * 0.82f) * sin(a).toFloat(),
+                    cx + (r * 0.96f) * cos(a).toFloat(),
+                    cy + (r * 0.96f) * sin(a).toFloat(),
+                    dial,
                 )
             }
 
@@ -82,14 +78,24 @@ class LiveClockIconDrawable(base: Drawable?) :
             // Hour hand
             hand.strokeWidth = unit * 0.16f
             val ha = Math.toRadians(hour * 30.0 - 90.0)
-            canvas.drawLine(cx, cy, cx + (r * 0.5f) * cos(ha).toFloat(),
-                    cy + (r * 0.5f) * sin(ha).toFloat(), hand)
+            canvas.drawLine(
+                cx,
+                cy,
+                cx + (r * 0.5f) * cos(ha).toFloat(),
+                cy + (r * 0.5f) * sin(ha).toFloat(),
+                hand,
+            )
 
             // Minute hand
             hand.strokeWidth = unit * 0.11f
             val ma = Math.toRadians(minute * 6.0 - 90.0)
-            canvas.drawLine(cx, cy, cx + (r * 0.78f) * cos(ma).toFloat(),
-                    cy + (r * 0.78f) * sin(ma).toFloat(), hand)
+            canvas.drawLine(
+                cx,
+                cy,
+                cx + (r * 0.78f) * cos(ma).toFloat(),
+                cy + (r * 0.78f) * sin(ma).toFloat(),
+                hand,
+            )
 
             // Center pivot
             canvas.drawCircle(cx, cy, unit * 0.09f, dot)
@@ -102,8 +108,7 @@ class LiveClockIconDrawable(base: Drawable?) :
 }
 
 /** Wraps [base]'s background layer with today's weekday + date, calendar-icon style. */
-class LiveCalendarIconDrawable(base: Drawable?) :
-        CustomAdaptiveIconDrawable(liveBackgroundOf(base, "#4285F4"), DateDrawable(base)) {
+class LiveCalendarIconDrawable(base: Drawable?) : CustomAdaptiveIconDrawable(liveBackgroundOf(base, "#4285F4"), DateDrawable(base)) {
 
     private class DateDrawable(base: Drawable?) : Drawable() {
         private val weekday = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -183,9 +188,9 @@ class LiveCalendarIconDrawable(base: Drawable?) :
  * referenced from the superclass constructor delegation calls above.
  */
 private fun liveBackgroundOf(base: Drawable?, fallbackColor: String): Drawable {
-    val bg = (base as? AdaptiveIconDrawable)?.mutate()?.let {
+    val bg = (base as? AdaptiveIconDrawable)?.let { adaptive ->
         try {
-            it.getDrawable(0)
+            adaptive.getDrawable(0)?.mutate()
         } catch (e: Exception) {
             null
         }
