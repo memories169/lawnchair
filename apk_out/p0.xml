@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="migration_src_db_file">launcher_5_4_4.db</string>
+    <int name="launcher.home_bounce_count" value="3" />
+    <string name="migration_src_workspace_size">4,5</string>
+    <int name="version" value="2" />
+    <int name="migration_src_hotseat_count" value="4" />
+    <int name="migration_src_device_type" value="0" />
+  <string name="pref_drawerSortMode">ownOrder</string>
+</map>
