@@ -364,7 +364,7 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                 drawerFolderIcon.setOnLongClickListener(mOnIconLongClickListener);
                 // [xperia-port] Tap toggles inline expansion (instead of opening the workspace folder
                 // popup) so the folder's apps appear in place and can be dragged out. Manual mode only.
-                final int tappedFolderId = folderInfo.getId();
+                final int tappedFolderId = folderInfo.id;
                 drawerFolderIcon.setOnClickListener(v -> {
                     if (mApps instanceof app.lawnchair.allapps.LawnchairAlphabeticalAppsList) {
                         ((app.lawnchair.allapps.LawnchairAlphabeticalAppsList<?>) mApps)
