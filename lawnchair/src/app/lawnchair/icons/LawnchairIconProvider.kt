@@ -223,10 +223,11 @@ class LawnchairIconProvider @JvmOverloads constructor(
                 }
             }
         }
-        // [trebuchet-port] The live clock/calendar faces are handled by the stock dynamic-icon path:
-        // config.xml points clock_component_name at the installed DeskClock so IconProvider produces
-        // an animated ClockDrawableWrapper (with a ticking second hand), and the Etar calendar ships
-        // its own live date icon. No custom wrapping needed here.
+        // [trebuchet-port] The live clock/calendar faces come from the stock dynamic-icon path:
+        // config.xml points clock_component_name at the installed DeskClock (animated
+        // ClockDrawableWrapper with a ticking second hand) and calendar_component_name at Etar,
+        // whose "<pkg>.dynamic_icons" metadata maps today's day of month to its own icon.
+        // No custom wrapping needed here.
         return defaultIcon
     }
 

@@ -17,7 +17,7 @@
 
 <resources>
     <string name="app_filter_class" translatable="false">app.lawnchair.DefaultAppFilter</string>
-    <string name="calendar_component_name" translatable="false">com.google.android.calendar/com.android.calendar.AllInOneActivity</string>
+    <string name="calendar_component_name" translatable="false">org.lineageos.etar/com.android.calendar.AllInOneActivity</string>
     <dimen name="settingslib_preferred_minimum_touch_target">48dp</dimen>
     <string-array name="dynamic_calendar_components_name">
         <item>com.android.calendar</item>
