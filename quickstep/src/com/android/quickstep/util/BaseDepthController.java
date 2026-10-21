@@ -105,7 +105,8 @@ public class BaseDepthController {
 
     public BaseDepthController(Launcher activity) {
         mLauncher = activity;
-        mMaxBlurRadius = activity.getResources().getInteger(R.integer.max_depth_blur_radius);
+        mMaxBlurRadius = activity.getResources().getDimensionPixelSize(
+                R.dimen.max_depth_blur_radius);
         mWallpaperManager = activity.getSystemService(WallpaperManager.class);
 
         MultiPropertyFactory<BaseDepthController> depthProperty = new MultiPropertyFactory<>(this, DEPTH,
@@ -117,6 +118,13 @@ public class BaseDepthController {
     protected void setCrossWindowBlursEnabled(boolean isEnabled) {
         mCrossWindowBlursEnabled = isEnabled;
         applyDepthAndBlur();
+    }
+
+    /**
+     * The current depth, from 0 (fully zoomed in) to 1 (fully zoomed out).
+     */
+    protected float getDepth() {
+        return mDepth;
     }
 
     public void setHasContentBehindLauncher(boolean hasContentBehindLauncher) {

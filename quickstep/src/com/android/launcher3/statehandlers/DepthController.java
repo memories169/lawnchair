@@ -17,6 +17,7 @@
 package com.android.launcher3.statehandlers;
 
 import static com.android.app.animation.Interpolators.LINEAR;
+import static com.android.launcher3.Flags.enableScalingRevealHomeAnimation;
 import static com.android.launcher3.states.StateAnimationConfig.ANIM_DEPTH;
 import static com.android.launcher3.states.StateAnimationConfig.SKIP_DEPTH_CONTROLLER;
 import static com.android.launcher3.util.MultiPropertyFactory.MULTI_PROPERTY_VALUE;
@@ -24,6 +25,8 @@ import static com.android.launcher3.util.MultiPropertyFactory.MULTI_PROPERTY_VAL
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
+import android.os.Build;
+import android.os.IBinder;
 import android.view.CrossWindowBlurListeners;
 import android.view.View;
 import android.view.ViewRootImpl;
@@ -41,6 +44,8 @@ import com.patrykmichalik.opto.core.PreferenceExtensionsKt;
 
 import java.io.PrintWriter;
 import java.util.function.Consumer;
+
+import androidx.annotation.RequiresApi;
 
 import app.lawnchair.compat.LawnchairQuickstepCompat;
 import app.lawnchair.preferences2.PreferenceManager2;
@@ -177,13 +182,50 @@ public class DepthController extends BaseDepthController implements StateHandler
 
     @Override
     protected void applyDepthAndBlur() {
+        if (!mEnableDepth) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Use the public window background blur API instead of the hidden
+            // SurfaceControl transaction API: the latter is blocked for apps on newer
+            // releases (the failure is silent because it is thrown from a hidden API).
+            try {
+                ensureDependencies();
+                applyWindowBackgroundBlur();
+            } catch (Throwable t) {
+                // Ignore
+            }
+            return;
+        }
         try {
-            if (LawnchairQuickstepCompat.ATLEAST_R && mEnableDepth) {
+            if (LawnchairQuickstepCompat.ATLEAST_R) {
                 ensureDependencies();
                 super.applyDepthAndBlur();
             }
         } catch (Throwable t) {
             // Ignore
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private void applyWindowBackgroundBlur() {
+        float depth = getDepth();
+        boolean hasOpaqueBg = mLauncher.getScrimView().isFullyOpaque();
+        // The blur percentage grows linearly with depth and maxes out at 30% depth.
+        float blurAmount = enableScalingRevealHomeAnimation() ? Math.min(3 * depth, 1f) : depth;
+        int blurRadius = hasOpaqueBg || mPauseBlurs
+                ? 0 : Math.round(blurAmount * mMaxBlurRadius);
+        mCurrentBlur = blurRadius;
+        mLauncher.getWindow().setBackgroundBlurRadius(blurRadius);
+
+        IBinder windowToken = mLauncher.getRootView().getWindowToken();
+        if (windowToken != null) {
+            try {
+                mWallpaperManager.setWallpaperZoomOut(windowToken,
+                        enableScalingRevealHomeAnimation() ? depth : depth / 3);
+            } catch (Throwable t) {
+                // Ignore: wallpaper zoom is a hidden API and may not be available.
+            }
         }
     }
 
